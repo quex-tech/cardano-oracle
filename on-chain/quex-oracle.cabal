@@ -1,0 +1,40 @@
+cabal-version:   3.0
+name:            quex-oracle
+version:         0.1.0.0
+license:
+build-type:      Simple
+
+common options
+  ghc-options: -Wall
+  default-language: Haskell2010
+
+library scripts
+  import:         options
+  hs-source-dirs: src
+  exposed-modules:
+    OracleResponseMintingPolicy
+    OracleResponseSpendingValidator
+    Oracle
+
+  build-depends:
+    , base
+    , plutus-core ^>=1.42.0.0
+    , plutus-ledger-api ^>=1.42.0.0
+    , plutus-tx ^>=1.42.0.0
+
+  if !(impl(ghcjs) || os(ghcjs))
+    build-depends: plutus-tx-plugin
+
+executable gen-oracle-blueprint
+  import:           options
+  hs-source-dirs:   app
+  main-is:          GenOracleBlueprint.hs
+  build-depends:
+    , base
+    , bytestring
+    , containers
+    , plutus-core ^>=1.42.0.0
+    , plutus-ledger-api ^>=1.42.0.0
+    , plutus-tx ^>=1.42.0.0
+    , plutus-tx-plugin ^>=1.42.0.0
+    , scripts
