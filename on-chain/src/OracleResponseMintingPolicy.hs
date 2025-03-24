@@ -54,38 +54,32 @@ import PlutusTx.Blueprint
 import PlutusTx.Prelude
 
 data OracleResponseMintingRedeemer
-  = Create PoolID ETHSignedMessage
+  = Create ETHSignedMessage
   | Delete
   deriving stock (Generic)
   deriving anyclass (HasBlueprintDefinition)
 
-$(makeIsDataSchemaIndexed ''OracleResponseMintingRedeemer [('Create, 0), ('Delete, 1)])
+makeIsDataSchemaIndexed ''OracleResponseMintingRedeemer [('Create, 0), ('Delete, 1)]
 
 {-# INLINEABLE oracleResponseTypedMintingPolicy #-}
 oracleResponseTypedMintingPolicy :: Address -> OracleResponseMintingRedeemer -> ScriptContext -> Bool
 oracleResponseTypedMintingPolicy destinationAddress redeemer scriptContext =
   case redeemer of
-    (Create poolID signedOracleMessage@(oracleMessage, _)) ->
-      and
-        [ mintedSingleCorrectToken,
-          oracleMessageIsValid,
-          outputIsValid
-        ]
-      where
-        mintedSingleCorrectToken = mintedValue == singleton ownCS (mkPoolActionID poolID actionID) 1
-        oracleMessageIsValid = verifyOracleMessage txInfo poolID signedOracleMessage
-        outputIsValid = case outputsWithMintedToken of
-          [(TxOut address value (OutputDatum responseDatum) _)] ->
-            and
-              [ address == destinationAddress,
-                (getDatum responseDatum) == dataItem,
-                noOtherTokens
-              ]
-            where
-              noOtherTokens = symbols value == [adaSymbol, ownCS]
-          _ -> False
-        outputsWithMintedToken = filter (\o -> elem ownCS (symbols . txOutValue $ o)) (txInfoOutputs txInfo)
-        (actionID, dataItem) = unsafeFromBuiltinData oracleMessage :: (ActionID, BuiltinData)
+    (Create signedOracleMessage@(oracleMessage, _)) -> case (findOracle txInfo) of
+      Just oracle@(poolID, _, _) ->
+        mintedSingleCorrectToken && oracleMessageIsValid && outputIsValid
+        where
+          mintedSingleCorrectToken = mintedValue == singleton ownCS (mkPoolActionID poolID actionID) 1
+          oracleMessageIsValid = verifyOracleMessage txInfo oracle signedOracleMessage
+          outputIsValid = case outputsWithMintedToken of
+            [(TxOut address value (OutputDatum responseDatum) _)] ->
+              address == destinationAddress && (getDatum responseDatum) == dataItem && noOtherTokens
+              where
+                noOtherTokens = symbols value == [adaSymbol, ownCS]
+            _ -> False
+          outputsWithMintedToken = filter (\o -> elem ownCS (symbols . txOutValue $ o)) (txInfoOutputs txInfo)
+          (actionID, dataItem) = unsafeFromBuiltinData oracleMessage :: (ActionID, BuiltinData)
+      Nothing -> False
     Delete -> isZero mintedValue
   where
     mintedValue = mintValueMinted (txInfoMint txInfo)

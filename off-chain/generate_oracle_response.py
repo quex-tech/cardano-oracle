@@ -21,7 +21,7 @@ def main():
 
     msg = OracleMessage(
         data_item=DataItem(
-            timestamp=round(time())*1000,
+            timestamp=round(time()),
             error=0,
             value=RawPlutusData.from_primitive(123),
         ),
@@ -82,8 +82,8 @@ class OracleMessage(PlutusData):
 
     def sign_with_account(self, account: Account):
         msg = self.to_cbor()
-        msghash = encode_defunct(keccak(msg))
-        return ETHSignature.fromETH(account.sign_message(msghash))
+        msghash = keccak(msg)
+        return ETHSignature.fromETH(account.unsafe_sign_hash(msghash))
 
 
 @dataclass

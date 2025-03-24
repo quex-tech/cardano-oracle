@@ -51,47 +51,38 @@ import PlutusLedgerApi.V3.Contexts
 import PlutusTx
 import PlutusTx.Prelude
 
-type OracleResponseSpendingRedeemer = (PoolID, ETHSignedMessage)
-
 {-# INLINEABLE oracleResponseTypedValidator #-}
-oracleResponseTypedValidator :: DataItem -> OracleResponseSpendingRedeemer -> ScriptContext -> Bool
-oracleResponseTypedValidator (oldTimestamp, _, _) (poolID, signedOracleMessage@(oracleMessage, _)) scriptContext =
-  and
-    [ newTimestamp > oldTimestamp,
-      oracleMessageIsValid,
-      inputsAndOutputsAreValid
-    ]
+oracleResponseTypedValidator :: DataItem -> ETHSignedMessage -> ScriptContext -> Bool
+oracleResponseTypedValidator (oldTimestamp, _, _) signedOracleMessage@(oracleMessage, _) scriptContext =
+  case (findOracle txInfo) of
+    Just oracle@(poolID, _, _) ->
+      newTimestamp > oldTimestamp && oracleMessageIsValid && inputsAndOutputsAreValid
+      where
+        (newTimestamp, _, _) = unsafeFromBuiltinData dataItem :: DataItem
+        oracleMessageIsValid = verifyOracleMessage txInfo oracle signedOracleMessage
+        inputsAndOutputsAreValid = case (findOwnInput scriptContext) of
+          Just (TxInInfo _ ownInput) -> case (symbols ownInputValue) of
+            [a, ownCS] -> inputHasSinglePoolActionToken && outputIsValid && noTokensLeaked
+              where
+                inputHasSinglePoolActionToken = a == adaSymbol && valueOf ownInputValue ownCS poolActionID == 1
+                outputIsValid = case (getContinuingOutputs scriptContext) of
+                  [(TxOut _ outputValue (OutputDatum responseDatum) _)] ->
+                    (getDatum responseDatum == dataItem)
+                      && (valueOf outputValue ownCS poolActionID == 1)
+                      && (lovelaceValueOf outputValue >= lovelaceValueOf ownInputValue)
+                      && noOtherTokens
+                    where
+                      noOtherTokens = symbols outputValue == [adaSymbol, ownCS]
+                  _ -> False
+                noTokensLeaked = currencySymbolValueOf (valueProduced txInfo) ownCS == 1
+                poolActionID = mkPoolActionID poolID actionID
+            _ -> False
+            where
+              ownInputValue = txOutValue ownInput
+          Nothing -> False
+        (actionID, dataItem) = unsafeFromBuiltinData oracleMessage :: (ActionID, BuiltinData)
+    Nothing -> False
   where
-    (newTimestamp, _, _) = unsafeFromBuiltinData dataItem :: DataItem
-    oracleMessageIsValid = verifyOracleMessage txInfo poolID signedOracleMessage
-    inputsAndOutputsAreValid = case (findOwnInput scriptContext) of
-      Just (TxInInfo _ ownInput) -> case (symbols ownInputValue) of
-        [a, ownCS] ->
-          and
-            [ inputHasSinglePoolActionToken,
-              outputIsValid,
-              noTokensLeaked
-            ]
-          where
-            inputHasSinglePoolActionToken = a == adaSymbol && valueOf ownInputValue ownCS poolActionID == 1
-            outputIsValid = case (getContinuingOutputs scriptContext) of
-              [(TxOut _ outputValue (OutputDatum responseDatum) _)] ->
-                and
-                  [ (getDatum responseDatum) == dataItem,
-                    valueOf outputValue ownCS poolActionID == 1,
-                    lovelaceValueOf outputValue >= lovelaceValueOf ownInputValue,
-                    noOtherTokens
-                  ]
-                where
-                  noOtherTokens = symbols outputValue == [adaSymbol, ownCS]
-              _ -> False
-            noTokensLeaked = currencySymbolValueOf (valueProduced txInfo) ownCS == 1
-            poolActionID = mkPoolActionID poolID actionID
-        _ -> False
-        where
-          ownInputValue = txOutValue ownInput
-      Nothing -> False
-    (actionID, dataItem) = unsafeFromBuiltinData oracleMessage :: (ActionID, BuiltinData)
     txInfo = scriptContextTxInfo scriptContext
 
 oracleResponseUntypedValidator :: BuiltinData -> BuiltinUnit

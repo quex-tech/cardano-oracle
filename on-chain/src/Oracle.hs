@@ -22,15 +22,10 @@
 
 module Oracle
   ( ActionID,
-    ETHCompressedPubKey,
-    ETHSignature,
     ETHSignedMessage,
     DataItem,
-    OracleMessage,
-    PoolID,
-    TDParams,
+    findOracle,
     mkPoolActionID,
-    verifyETHSignature,
     verifyOracleMessage,
   )
 where
@@ -38,40 +33,38 @@ where
 import PlutusLedgerApi.V1
   ( AssetClass (..),
     CurrencySymbol (..),
-    DiffMilliSeconds,
-    POSIXTime,
+    DiffMilliSeconds (..),
     TokenName (..),
     after,
-    assetClassValueOf,
+    flattenValue,
     fromMilliSeconds,
   )
 import PlutusLedgerApi.V3
   ( OutputDatum (..),
     TxInfo,
     TxOut (..),
+    Value (..),
+    adaSymbol,
     getDatum,
     txInInfoResolved,
     txInfoReferenceInputs,
     txInfoValidRange,
-    txOutValue,
   )
 import PlutusTx
 import PlutusTx.Builtins (serialiseData)
 import PlutusTx.Prelude
 
-type OracleMessage = (ActionID, DataItem)
-
 type ActionID = BuiltinByteString
 
-type DataItem = (POSIXTime, Error, BuiltinData)
+type DataItem = (POSIXTimeSeconds, Integer, BuiltinData)
 
-type Error = Integer
+type POSIXTimeSeconds = Integer
 
 type PoolID = AssetClass
 
 type PoolActionID = TokenName
 
-type TDParams = (ETHCompressedPubKey, DiffMilliSeconds)
+type Oracle = (PoolID, ETHCompressedPubKey, DiffMilliSeconds)
 
 type ETHSignature = BuiltinByteString
 
@@ -79,31 +72,47 @@ type ETHCompressedPubKey = BuiltinByteString
 
 type ETHSignedMessage = (BuiltinData, ETHSignature)
 
-{-# INLINEABLE verifyETHSignature #-}
-verifyETHSignature :: ETHCompressedPubKey -> ETHSignedMessage -> Bool
-verifyETHSignature pubKey (message, signature) =
-  verifyEcdsaSecp256k1Signature pubKey (keccak_256 . serialiseData $ message) signature
-
 {-# INLINEABLE mkPoolActionID #-}
 mkPoolActionID :: PoolID -> ActionID -> PoolActionID
 mkPoolActionID (AssetClass (CurrencySymbol poolCS, TokenName poolTN)) actionID =
   TokenName . sha2_256 $ poolCS `appendByteString` poolTN `appendByteString` actionID
 
-{-# INLINEABLE verifyOracleMessage #-}
-verifyOracleMessage :: TxInfo -> PoolID -> ETHSignedMessage -> Bool
-verifyOracleMessage txInfo poolID signedOracleMessage@(oracleMessage, _) =
-  case referenceOutputsWithPoolToken of
-    [(TxOut _ _ (OutputDatum tdDatum) _)] ->
-      and [responseSignatureIsValid, responseIsNotExpired]
-      where
-        responseSignatureIsValid = verifyETHSignature tdPubKey signedOracleMessage
-        responseIsNotExpired = after responseExpiresAt (txInfoValidRange txInfo)
-        responseExpiresAt = timestamp + fromMilliSeconds responseValidityPeriod
-        (tdPubKey, responseValidityPeriod) = unsafeFromBuiltinData . getDatum $ tdDatum :: TDParams
-        (_, (timestamp, _, _)) = unsafeFromBuiltinData oracleMessage :: (ActionID, DataItem)
-    _ -> False
+{-# INLINEABLE findOracle #-}
+findOracle :: TxInfo -> Maybe Oracle
+findOracle txInfo =
+  case referenceInputs of
+    [(TxOut _ value (OutputDatum datum) _)] ->
+      case (findPoolID value) of
+        Just poolID -> Just (poolID, pubKey, responseValidityPeriodMs)
+          where
+            (pubKey, responseValidityPeriodMs) = unsafeFromBuiltinData . getDatum $ datum :: (ETHCompressedPubKey, DiffMilliSeconds)
+        Nothing -> Nothing
+    _ -> Nothing
   where
-    referenceOutputsWithPoolToken =
-      filter (\i -> assetClassValueOf (txOutValue i) poolID > 0)
-        . map txInInfoResolved
+    referenceInputs =
+      map txInInfoResolved
         $ txInfoReferenceInputs txInfo
+
+{-# INLINEABLE findPoolID #-}
+findPoolID :: Value -> Maybe PoolID
+findPoolID value =
+  case filter (\(cs, _, _) -> cs /= adaSymbol) (flattenValue value) of
+    [(cs, tn, v)] | v == 1 -> Just $ AssetClass (cs, tn)
+    _ -> Nothing
+
+{-# INLINEABLE verifyOracleMessage #-}
+verifyOracleMessage :: TxInfo -> Oracle -> ETHSignedMessage -> Bool
+verifyOracleMessage txInfo (_, pubKey, responseValidityPeriodMs) signedOracleMessage@(oracleMessage, _) =
+  responseSignatureIsValid && responseIsNotExpired
+  where
+    responseSignatureIsValid = verifyETHSignature pubKey signedOracleMessage
+    responseIsNotExpired = after responseExpiresAt (txInfoValidRange txInfo)
+    responseExpiresAt = fromMilliSeconds (DiffMilliSeconds (1000 * posixTimeSeconds) + responseValidityPeriodMs)
+    (_, (posixTimeSeconds, _, _)) = unsafeFromBuiltinData oracleMessage :: (ActionID, DataItem)
+
+{-# INLINEABLE verifyETHSignature #-}
+verifyETHSignature :: ETHCompressedPubKey -> ETHSignedMessage -> Bool
+verifyETHSignature pubKey (message, signature) =
+  verifyEcdsaSecp256k1Signature pubKey hash signature
+  where
+    hash = keccak_256 (serialiseData message)

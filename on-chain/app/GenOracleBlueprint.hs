@@ -20,6 +20,7 @@ module Main where
 
 import Data.ByteString.Short qualified as Short
 import Data.Set qualified as Set
+import Oracle (ETHSignedMessage)
 import OracleResponseMintingPolicy
 import OracleResponseSpendingValidator
 import PlutusLedgerApi.Common (serialiseCompiledCode)
@@ -34,7 +35,7 @@ myContractBlueprint =
     { contractId = Just "quex-oracle",
       contractPreamble = myPreamble,
       contractValidators = Set.fromList [mintingPolicy, validator],
-      contractDefinitions = deriveDefinitions @[Address, OracleResponseMintingRedeemer, OracleResponseSpendingRedeemer]
+      contractDefinitions = deriveDefinitions @[Address, OracleResponseMintingRedeemer, ETHSignedMessage]
     }
 
 myPreamble :: Preamble
@@ -85,7 +86,7 @@ validator =
           { argumentTitle = Just "Redeemer for the spending validator",
             argumentDescription = Nothing,
             argumentPurpose = Set.singleton Spend,
-            argumentSchema = definitionRef @OracleResponseSpendingRedeemer
+            argumentSchema = definitionRef @ETHSignedMessage
           },
       validatorDatum = Nothing,
       validatorCompiled = do

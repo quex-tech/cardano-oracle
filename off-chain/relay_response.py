@@ -47,17 +47,20 @@ def main():
     spending_validator_addr = Address(plutus_script_hash(
         PlutusV3Script.fromhex(spending_validator["compiledCode"])), network=nw)
 
+    redeemer = Redeemer(
+        data=CreateOracleResponseMintingRedeemer(signed_message=response))
+
     builder = TransactionBuilder(context)
     builder.mint = assets
     builder.add_input_address(addr)
     builder.add_minting_script(
         PlutusV3Script.fromhex(mintingPolicy["compiledCode"]),
-        redeemer=Redeemer(data=CreateOracleResponseMintingRedeemer(pool_id=pool_id, signed_message=response)))
+        redeemer=redeemer)
     builder.reference_inputs.add(oracle_utxo)
     builder.add_output(TransactionOutput(spending_validator_addr, Value(
         2_000_000, assets), datum=response.message.data))
     signed_tx = builder.build_and_sign(
-        [sk], change_address=addr, collateral_change_address=addr)
+        [sk], change_address=addr, collateral_change_address=addr, auto_ttl_offset=200)
     print("Transaction", signed_tx)
     print("Transaction ID", signed_tx.id)
 
@@ -79,10 +82,9 @@ class DataItem(PlutusData):
 
 
 def parse_eth_signature(value: dict):
-    v = value["v"].to_bytes()
-    s = base64.b64decode(value["s"])
     r = base64.b64decode(value["r"])
-    return ByteString(v + r + s)
+    s = base64.b64decode(value["s"])
+    return ByteString(r + s)
 
 
 @dataclass
@@ -113,8 +115,13 @@ class QuexResponse(PlutusData):
 
 @dataclass
 class CreateOracleResponseMintingRedeemer(PlutusData):
-    pool_id: bytes
+    CONSTR_ID = 0
     signed_message: QuexResponse
+
+
+@dataclass
+class DeleteOracleResponseMintingRedeemer(PlutusData):
+    CONSTR_ID = 1
 
 
 if __name__ == '__main__':
