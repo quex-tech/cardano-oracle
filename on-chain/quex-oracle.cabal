@@ -14,6 +14,7 @@ library scripts
   exposed-modules:
     OracleResponseMintingPolicy
     OracleResponseSpendingValidator
+    ExampleUserValidator
     Oracle
 
   build-depends:
@@ -38,7 +39,20 @@ executable gen-oracle-blueprint
     , plutus-tx ^>=1.42.0.0
     , plutus-tx-plugin ^>=1.42.0.0
     , scripts
-    , text
+
+executable gen-example-user-blueprint
+  import:           options
+  hs-source-dirs:   app
+  main-is:          GenExampleUserBlueprint.hs
+  build-depends:
+    , base
+    , bytestring
+    , containers
+    , plutus-core ^>=1.42.0.0
+    , plutus-ledger-api ^>=1.42.0.0
+    , plutus-tx ^>=1.42.0.0
+    , plutus-tx-plugin ^>=1.42.0.0
+    , scripts
 
 test-suite quex-oracle-test
   type:                exitcode-stdio-1.0

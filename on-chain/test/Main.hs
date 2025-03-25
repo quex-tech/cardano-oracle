@@ -5,7 +5,7 @@
 module Main where
 
 import PlutusLedgerApi.V1.Crypto qualified as Crypto
-import PlutusTx.Builtins.HasOpaque (stringToBuiltinByteString, stringToBuiltinByteStringHex)
+import PlutusTx.Builtins.HasOpaque (stringToBuiltinByteStringHex)
 import PlutusTx.Prelude
 import System.Exit (exitFailure, exitSuccess)
 import Prelude qualified as Haskell

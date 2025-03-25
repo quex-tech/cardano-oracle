@@ -24,8 +24,9 @@ def main():
     with open(paths.POOL_ID, "rb") as f:
         pool_id = f.read()
 
-    with open(paths.ORACLE_UTXO, "rb") as f:
-        oracle_utxo = TransactionInput.from_cbor(f.read())
+    with open(paths.ORACLE_UTXO, "r") as f:
+        tx, idx = f.read().split("#")
+        oracle_utxo = TransactionInput.from_primitive([tx, int(idx)])
 
     nw = Network.TESTNET
 

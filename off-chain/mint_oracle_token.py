@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import argparse
 import os
 from pycardano import *
 from dataclasses import dataclass
@@ -6,6 +7,11 @@ import paths
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--submit", help="submit transaction", action='store_true')
+    args = parser.parse_args()
+    sk = get_or_create_signing_key()
     vk = PaymentVerificationKey.from_signing_key(sk)
     os.unlink(paths.POOL_OWNER_VERIFICATION_KEY)
     vk.save(paths.POOL_OWNER_VERIFICATION_KEY)
@@ -45,10 +51,12 @@ def main():
     print("Transaction", signed_tx)
     print("Transaction ID", signed_tx.id)
 
-    with open(paths.ORACLE_UTXO, "wb") as f:
-        f.write(TransactionInput(signed_tx.id, 0).to_cbor())
-
-    context.submit_tx(signed_tx)
+    if args.submit:
+        context.submit_tx(signed_tx)
+        with open(paths.ORACLE_UTXO, "w") as f:
+            f.write(f"{signed_tx.id}#0")
+    else:
+        print("to submit provide --submit flag")
 
 
 def get_or_create_signing_key():

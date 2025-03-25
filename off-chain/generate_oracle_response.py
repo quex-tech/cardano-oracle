@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import argparse
 from base64 import b64encode
 from dataclasses import dataclass, asdict
 import json
@@ -17,13 +18,16 @@ import paths
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("value", help="oracle response value as JSON")
+    args = parser.parse_args()
     account = get_or_create_account()
 
     msg = OracleMessage(
         data_item=DataItem(
             timestamp=round(time()),
             error=0,
-            value=RawPlutusData.from_primitive(123),
+            value=RawPlutusData.from_primitive(json.loads(args.value)),
         ),
         action_id="action".encode("ascii")
     )
