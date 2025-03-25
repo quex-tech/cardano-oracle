@@ -32,8 +32,6 @@ def main():
     addr = Address(payment_part=vk.hash(),
                    network=nw)
 
-    context = OgmiosV6ChainContext()
-
     pool_action_id = sha256(pool_id + response.message.action_id).digest()
 
     assets = MultiAsset.from_primitive(
@@ -44,19 +42,50 @@ def main():
         }
     )
 
-    spending_validator_addr = Address(plutus_script_hash(
-        PlutusV3Script.fromhex(spending_validator["compiledCode"])), network=nw)
+    spending_validator_script = PlutusV3Script.fromhex(
+        spending_validator["compiledCode"])
+
+    spending_validator_addr = Address(
+        plutus_script_hash(spending_validator_script), network=nw)
 
     redeemer = Redeemer(
         data=CreateOracleResponseMintingRedeemer(signed_message=response))
 
+    context = OgmiosV6ChainContext()
+
+    response_utxos = [utxo for utxo in context.utxos(
+        spending_validator_addr) if utxo.output.amount.multi_asset == assets]
+
     builder = TransactionBuilder(context)
     builder.utxo_selectors = [LargestFirstSelector()]
-    builder.mint = assets
+
     builder.add_input_address(addr)
-    builder.add_minting_script(
-        PlutusV3Script.fromhex(mintingPolicy["compiledCode"]),
-        redeemer=redeemer)
+
+    mintingPolicyScript = PlutusV3Script.fromhex(mintingPolicy["compiledCode"])
+
+    if response_utxos:
+        for utxo in response_utxos:
+            builder.add_script_input(
+                utxo, spending_validator_script, redeemer=Redeemer(data=response))
+        tokens_to_burn = len(response_utxos) - 1
+        if tokens_to_burn:
+            builder.mint = MultiAsset.from_primitive(
+                {
+                    bytes.fromhex(mintingPolicy["hash"]): {
+                        pool_action_id: -tokens_to_burn
+                    }
+                }
+            )
+            builder.add_minting_script(
+                mintingPolicyScript,
+                redeemer=Redeemer(
+                    data=DeleteOracleResponseMintingRedeemer()))
+    else:
+        builder.add_minting_script(
+            mintingPolicyScript,
+            redeemer=Redeemer(
+                data=CreateOracleResponseMintingRedeemer(signed_message=response)))
+
     builder.reference_inputs.add(oracle_utxo)
     builder.add_output(TransactionOutput(spending_validator_addr, Value(
         2_000_000, assets), datum=response.message.data))
