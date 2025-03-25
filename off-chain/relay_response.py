@@ -51,6 +51,7 @@ def main():
         data=CreateOracleResponseMintingRedeemer(signed_message=response))
 
     builder = TransactionBuilder(context)
+    builder.utxo_selectors = [LargestFirstSelector()]
     builder.mint = assets
     builder.add_input_address(addr)
     builder.add_minting_script(
@@ -63,6 +64,8 @@ def main():
         [sk], change_address=addr, collateral_change_address=addr, auto_ttl_offset=200)
     print("Transaction", signed_tx)
     print("Transaction ID", signed_tx.id)
+
+    context.submit_tx(signed_tx)
 
 
 @dataclass
