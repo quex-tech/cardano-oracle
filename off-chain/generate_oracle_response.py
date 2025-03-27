@@ -11,30 +11,27 @@ from eth_account.messages import encode_defunct
 from eth_keys import keys
 from eth_utils import keccak
 
-from pycardano.serialization import CBORSerializable, RawCBOR
-from pycardano.plutus import PlutusData, RawPlutusData
-
+from plutus_encoding import PlutusRawData, PlutusTuple, encode_by_schema, encode_primitive
 import paths
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("value", help="oracle response value as JSON")
+    parser.add_argument("schema", help="solidity-like ABI schema")
     args = parser.parse_args()
     account = get_or_create_account()
 
     msg = OracleMessage(
+        action_id="action".encode("ascii"),
         data_item=DataItem(
             timestamp=round(time()),
             error=0,
-            value=RawPlutusData.from_primitive(json.loads(args.value)),
+            value=encode_by_schema(json.loads(args.value), args.schema),
         ),
-        action_id="action".encode("ascii")
     )
 
     sig = msg.sign_with_account(account)
-
-    msg.data_item.value = msg.data_item.value.to_cbor()
 
     response = OracleResponse(msg=msg, sig=sig)
 
@@ -71,21 +68,25 @@ class ETHSignature:
 
 
 @dataclass
-class DataItem(PlutusData):
-    CONSTR_ID = 0
+class DataItem():
     timestamp: int
     error: int
-    value: RawPlutusData
+    value: bytes
+
+    def to_primitive(self):
+        return PlutusTuple(self.timestamp, self.error, PlutusRawData(self.value))
 
 
 @dataclass
-class OracleMessage(PlutusData):
-    CONSTR_ID = 0
+class OracleMessage():
     action_id: bytes
     data_item: DataItem
 
+    def to_primitive(self):
+        return PlutusTuple(self.action_id, self.data_item.to_primitive())
+
     def sign_with_account(self, account: Account):
-        msg = self.to_cbor()
+        msg = encode_primitive(self.to_primitive())
         msghash = keccak(msg)
         return ETHSignature.fromETH(account.unsafe_sign_hash(msghash))
 
