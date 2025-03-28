@@ -1,10 +1,9 @@
 import json
 import unittest
-from plutus_encoding import encode_by_schema
 from pycardano.plutus import RawPlutusData
 from pycardano.serialization import default_encoder, ByteString, IndefiniteList
 from cbor2 import dumps, CBORTag
-
+from plutus.abi import encoder
 
 class TestEncode(unittest.TestCase):
     def test_encode(self):
@@ -43,9 +42,9 @@ class TestEncode(unittest.TestCase):
 
         for json_str, schema, expected_primitive in cases:
             with self.subTest(json=json_str, schema=schema, expected_primitive=expected_primitive):
-                actual = encode_by_schema(json.loads(json_str), schema)
+                actual = encoder.encode([schema], [json.loads(json_str)])
                 expected = dumps(expected_primitive, default=default_encoder)
-                print(json_str, schema, "=", expected.hex())
+                print(json_str, "::", schema, "=", expected.hex())
                 self.assertEqual(actual.hex(), expected.hex())
 
 

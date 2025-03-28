@@ -11,7 +11,8 @@ from eth_account.messages import encode_defunct
 from eth_keys import keys
 from eth_utils import keccak
 
-from plutus_encoding import PlutusRawData, PlutusTuple, encode_by_schema, encode_primitive
+from plutus.cbor import PlutusRawData, PlutusTuple, dumps as plutus_dumps
+from plutus.abi import encoder
 import paths
 
 
@@ -27,7 +28,7 @@ def main():
         data_item=DataItem(
             timestamp=round(time()),
             error=0,
-            value=encode_by_schema(json.loads(args.value), args.schema),
+            value=encoder.encode([args.schema], [json.loads(args.value)]),
         ),
     )
 
@@ -74,7 +75,7 @@ class DataItem():
     value: bytes
 
     def to_primitive(self):
-        return PlutusTuple(self.timestamp, self.error, PlutusRawData(self.value))
+        return PlutusTuple([self.timestamp, self.error, PlutusRawData(self.value)])
 
 
 @dataclass
@@ -83,10 +84,10 @@ class OracleMessage():
     data_item: DataItem
 
     def to_primitive(self):
-        return PlutusTuple(self.action_id, self.data_item.to_primitive())
+        return PlutusTuple([self.action_id, self.data_item.to_primitive()])
 
     def sign_with_account(self, account: Account):
-        msg = encode_primitive(self.to_primitive())
+        msg = plutus_dumps(self.to_primitive())
         msghash = keccak(msg)
         return ETHSignature.fromETH(account.unsafe_sign_hash(msghash))
 
