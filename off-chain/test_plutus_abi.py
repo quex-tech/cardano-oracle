@@ -1,6 +1,5 @@
 import json
 import unittest
-from pycardano.plutus import RawPlutusData
 from pycardano.serialization import default_encoder, ByteString, IndefiniteList
 from cbor2 import dumps, CBORTag
 from plutus.abi import encoder

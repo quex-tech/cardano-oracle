@@ -1,7 +1,7 @@
 from typing import Any, List
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
-from cbor2 import CBOREncoder, dumps as cbor2_dumps
+from cbor2 import CBOREncoder, CBORTag, dumps as cbor2_dumps
 
 CBOR_CONSTR0 = b"\xd8\x79"
 CBOR_BYTES_INDEF = b"\x5f"
@@ -12,6 +12,22 @@ BYTES_MAX_CHUNK_SIZE = 64
 
 def dumps(value: Any) -> bytes:
     return cbor2_dumps(value, default=_encode_primitive)
+
+
+def get_tag(constr_idx: int) -> int:
+    if 0 <= constr_idx < 7:
+        return 121 + constr_idx
+    if 7 <= constr_idx < 128:
+        return 1280 + (constr_idx - 7)
+    raise ValueError(f"Unsupported constructor index: {constr_idx}")
+
+
+def get_constr_idx(tag: CBORTag) -> int:
+    if 121 <= tag.tag < 128:
+        return tag.tag - 121
+    if 1280 <= tag.tag < 1536:
+        return tag.tag - 1280 + 7
+    raise ValueError(f"Unsupported tag: {tag.tag}")
 
 
 class PlutusPrimitive(ABC):
