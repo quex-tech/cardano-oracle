@@ -1,4 +1,5 @@
 from abc import abstractmethod
+from typing import Any
 
 from cbor2 import CBORTag
 from eth_abi.base import parse_type_str, parse_tuple_type_str
@@ -16,7 +17,7 @@ class PlutusBaseEncoder(BaseEncoder):
         return dumps(self.to_primitive(value))
 
     @abstractmethod
-    def to_primitive(self, value):
+    def to_primitive(self, value) -> Any:
         pass
 
 
@@ -28,6 +29,7 @@ class IntegerEncoder(PlutusBaseEncoder):
     def to_primitive(self, value):
         return value
 
+    @classmethod
     @parse_type_str("int")
     def from_type_str(cls, type_str, registry):
         return cls()
@@ -44,6 +46,7 @@ class UnsignedIntegerEncoder(PlutusBaseEncoder):
     def to_primitive(self, value):
         return value
 
+    @classmethod
     @parse_type_str("uint")
     def from_type_str(cls, type_str, registry):
         return cls()
@@ -57,6 +60,7 @@ class BoolEncoder(PlutusBaseEncoder):
     def to_primitive(self, value):
         return CBORTag(122 if value else 121, [])
 
+    @classmethod
     @parse_type_str("bool")
     def from_type_str(cls, type_str, registry):
         return cls()
@@ -68,8 +72,9 @@ class StringEncoder(PlutusBaseEncoder):
             type(self).invalidate_value(value, msg="must be a string")
 
     def to_primitive(self, value):
-        return PlutusByteString(value.encode("utf-8"))
+        return PlutusByteString(value.encode())
 
+    @classmethod
     @parse_type_str("string")
     def from_type_str(cls, type_str, registry):
         return cls()
@@ -102,6 +107,7 @@ class TupleEncoder(PlutusBaseEncoder):
         ]
         return PlutusTuple(primitives)
 
+    @classmethod
     @parse_tuple_type_str
     def from_type_str(cls, type_str, registry):
         encoders = tuple(registry.get_encoder(comp.to_type_str())
@@ -133,6 +139,7 @@ class ArrayEncoder(PlutusBaseEncoder):
     def to_primitive(self, value):
         return PlutusList([self.item_encoder.to_primitive(item) for item in value])
 
+    @classmethod
     @parse_type_str(with_arrlist=True)
     def from_type_str(cls, type_str, registry):
         item_encoder = registry.get_encoder(type_str.item_type.to_type_str())

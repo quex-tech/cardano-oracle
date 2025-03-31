@@ -26,6 +26,7 @@ class PlutusEncodable(ABC):
 class PlutusDecodable(ABC):
     @classmethod
     def from_plutus(cls, tag: CBORTag):
+        _ensure_isinstance(tag, CBORTag)
         values = tag.value
         cls_fields = fields(cls)
         if len(values) != len(cls_fields):
@@ -58,14 +59,22 @@ def to_plutus(value):
 
 def from_plutus(value, target_type):
     if target_type is bytes:
+        _ensure_isinstance(value, bytes)
         return value
     if target_type is str:
+        _ensure_isinstance(value, bytes)
         return value.decode()
     if isinstance(target_type, type) and issubclass(target_type, PlutusDecodable):
         return target_type.from_plutus(value)
     if isinstance(target_type, type) and issubclass(target_type, IntEnum):
+        _ensure_isinstance(value, CBORTag)
         return target_type(get_constr_idx(value))
     if get_origin(target_type) is list:
         inner_type = get_args(target_type)[0]
         return [from_plutus(v, inner_type) for v in value]
     return value
+
+
+def _ensure_isinstance(value, target_type):
+    if not isinstance(value, target_type):
+        raise TypeError(f"Expected {target_type}, got {type(value)} {value}")
