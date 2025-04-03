@@ -11,18 +11,18 @@ from models import (
     HTTPPrivatePatch,
     HTTPRequest,
 )
-from signer_client import SignerClient
-from oracles import OracleRepository
-from responses import ResponseRepository
-from wallet import OraclePoolOwnerWallet
 from networks import get_chain_context
+from oracles import OracleRepository
+from protocol import Protocol
+from responses import ResponseRepository
+from signer_client import SignerClient
 from utils import (
     handle_tx,
-    load_scripts,
     tx_arg_parser,
     passphrase_arg_parser,
     blueprint_arg_parser,
 )
+from wallet import OraclePoolOwnerWallet
 
 
 def main():
@@ -101,16 +101,15 @@ def main():
     print("    ID:", pool.pool_id().hex())
     print("PoolAction ID:", pool.pool_action_id(response.message.action_id).hex())
 
-    minting_policy, validator = load_scripts(args.plutus_blueprint)
+    protocol = Protocol.load(args.plutus_blueprint)
 
-    repo = ResponseRepository(
-        wallet=wallet,
-        context=context,
-        minting_policy=minting_policy,
-        validator=validator,
+    response_repo = ResponseRepository(
+        wallet=wallet, context=context, protocol=protocol
     )
 
-    handle_tx(signed_tx=repo.add_tx(response, oracle), context=context, args=args)
+    handle_tx(
+        signed_tx=response_repo.add_tx(response, oracle), context=context, args=args
+    )
 
 
 if __name__ == "__main__":

@@ -3,26 +3,24 @@ import argparse
 from dataclasses import dataclass
 
 from pycardano import (
-    Address,
     ChainContext,
     MultiAsset,
     PlutusData,
-    PlutusV3Script,
     Redeemer,
     Transaction,
     TransactionBuilder,
     TransactionOutput,
     UTxO,
     Value,
-    plutus_script_hash,
 )
 from dotenv import load_dotenv
 
-from oracles import RegisteredOracle
 from models import DataItem, QuexResponse
-from wallet import OraclePoolOwnerWallet
 from networks import get_chain_context
-from utils import load_scripts, passphrase_arg_parser, blueprint_arg_parser
+from oracles import RegisteredOracle
+from protocol import Protocol
+from utils import passphrase_arg_parser, blueprint_arg_parser
+from wallet import OraclePoolOwnerWallet
 
 
 def main():
@@ -31,13 +29,11 @@ def main():
         parents=[passphrase_arg_parser, blueprint_arg_parser]
     )
     args = parser.parse_args()
-    minting_policy, validator = load_scripts(args.plutus_blueprint)
 
     repo = ResponseRepository(
         wallet=OraclePoolOwnerWallet.from_env(args.passphrase),
         context=get_chain_context(),
-        minting_policy=minting_policy,
-        validator=validator,
+        protocol=Protocol.load(args.plutus_blueprint),
     )
 
     for response in repo.all():
@@ -71,26 +67,19 @@ class StoredResponse:
 class ResponseRepository:
     wallet: OraclePoolOwnerWallet
     context: ChainContext
-    minting_policy: PlutusV3Script
-    validator: PlutusV3Script
+    protocol: Protocol
 
     def all(self):
-        validator_addr = Address(
-            plutus_script_hash(self.validator), network=self.context.network
-        )
-
-        currency_symbol = plutus_script_hash(self.minting_policy)
-
         return [
             StoredResponse.from_utxo(utxo)
-            for utxo in self.context.utxos(validator_addr)
-            if currency_symbol in utxo.output.amount.multi_asset
+            for utxo in self.context.utxos(
+                self.protocol.response_addr(self.context.network)
+            )
+            if self.protocol.response_currency_symbol in utxo.output.amount.multi_asset
         ]
 
     def add_tx(self, response: QuexResponse, oracle: RegisteredOracle) -> Transaction:
         nw = self.context.network
-        validator_addr = Address(plutus_script_hash(self.validator), network=nw)
-        currency_symbol = plutus_script_hash(self.minting_policy)
         pool_action_id = oracle.pools[0].pool_action_id(response.message.action_id)
 
         existing_responses = [
@@ -101,27 +90,33 @@ class ResponseRepository:
         builder.add_input_address(self.wallet.treasury.addr(nw))
 
         assets = MultiAsset.from_primitive(
-            {bytes(currency_symbol): {pool_action_id: 1}}
+            {bytes(self.protocol.response_currency_symbol): {pool_action_id: 1}}
         )
 
         if existing_responses:
             for r in existing_responses:
                 builder.add_script_input(
-                    r.utxo, self.validator, redeemer=Redeemer(data=response)
+                    r.utxo,
+                    self.protocol.spending_validator,
+                    redeemer=Redeemer(data=response),
                 )
             tokens_to_burn = len(existing_responses) - 1
             if tokens_to_burn:
                 builder.mint = MultiAsset.from_primitive(
-                    {bytes(currency_symbol): {pool_action_id: -tokens_to_burn}}
+                    {
+                        bytes(self.protocol.response_currency_symbol): {
+                            pool_action_id: -tokens_to_burn
+                        }
+                    }
                 )
                 builder.add_minting_script(
-                    self.minting_policy,
+                    self.protocol.minting_policy,
                     redeemer=Redeemer(data=DeleteOracleResponseMintingRedeemer()),
                 )
         else:
             builder.mint = assets
             builder.add_minting_script(
-                self.minting_policy,
+                self.protocol.minting_policy,
                 redeemer=Redeemer(
                     data=CreateOracleResponseMintingRedeemer(signed_message=response)
                 ),
@@ -130,7 +125,9 @@ class ResponseRepository:
         builder.reference_inputs.add(oracle.input)
         builder.add_output(
             TransactionOutput(
-                validator_addr, Value(2_000_000, assets), datum=response.message.data
+                self.protocol.response_addr(nw),
+                Value(2_000_000, assets),
+                datum=response.message.data,
             )
         )
 
