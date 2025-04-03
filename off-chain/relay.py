@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import argparse
+import os
 
 from pycardano.serialization import ByteString
 from dotenv import load_dotenv
@@ -33,7 +34,12 @@ def main():
     parser.add_argument(
         "-f", "--filter", default=".", help="jq filter to transfort response body"
     )
-    parser.add_argument("--oracle-url", default="http://10.13.192.131:8080")
+    parser.add_argument(
+        "--oracle-url",
+        default=os.environ.get("ORACLE_URL"),
+        required="ORACLE_URL" not in os.environ,
+        help="Base URL of a QUEX Signer"
+    )
     parser.add_argument("--plutus-blueprint", default="plutus.json")
     parser.add_argument("url", help="URL to fetch")
     parser.add_argument(

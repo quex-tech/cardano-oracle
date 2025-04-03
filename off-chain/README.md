@@ -24,9 +24,10 @@ deactivate
 
 ## Environment Variables
 
-+ `WALLET_MNEMONIC`: mnemonic phrase for the oracle pool owner wallet. Can be generated with `./wallet generate --passphrase <passphrase>`
++ `WALLET_MNEMONIC`: mnemonic phrase for the oracle pool owner wallet. Can be generated with `./wallet generate --passphrase <passphrase>`.
 + `CARDANO_NETWORK`: Cardano blockchain to use. Can be `preview`, `preprod`, or `mainnet`. Default is `preview`.
 + `BLOCKFROST_PROJECT`: blockfrost.io project ID to communicate with Cardano. If none, a local Ogmius V6 instance is assumed to be running.
++ `ORACLE_URL`: base URL of a QUEX Signer API to be used by default.
 
 The environment variables can be set inside `.env` file:
 ```sh
@@ -34,6 +35,7 @@ $ cat .env
 WALLET_MNEMONIC="word word word word word ..."
 CARDANO_NETWORK=preview
 BLOCKFROST_PROJECT=previewAbCdEf...
+ORACLE_URL="http://10.13.192.131:8080"
 ```
 
 ## Usage
@@ -94,6 +96,10 @@ You can unregister an oracle with:
 ```
 
 ### Initiate an HTTPS request and post the response to the blockchain
+
+Put oracle URL to the `ORACLE_URL` environment variable or to the `.env` file. That way you will not have to specify `--oracle-url` parameter to the `relay.py` script each time.
+
+Run:
 
 ```sh
 ./relay.py "https://api.binance.com/api/v3/depth?symbol=ADAUSDT&limit=1" \
