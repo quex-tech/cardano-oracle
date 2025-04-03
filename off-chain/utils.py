@@ -56,3 +56,18 @@ passphrase_arg_parser = ArgumentParser(add_help=False)
 passphrase_arg_parser.add_argument(
     "--passphrase", help="Passphrase for oracle pool owner wallet", default=""
 )
+
+
+def format_plutus_dict(data: dict) -> str:
+    if "int" in data:
+        return str(data["int"])
+    if "bytes" in data:
+        return f'"{bytes.fromhex(data["bytes"]).decode()}"'
+    if "list" in data:
+        return f"[{','.join([format_plutus_dict(item) for item in data["list"]])}]"
+    if "constructor" in data:
+        fields = data["fields"]
+        if fields:
+            return f"({','.join([format_plutus_dict(field) for field in fields])})"
+        return {0: "false", 1: "true"}.get(data["constructor"], default="()")
+    return "UNKNOWN"

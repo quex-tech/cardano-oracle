@@ -1,12 +1,13 @@
 from base64 import b64decode
 from dataclasses import dataclass
-from pprint import pformat
 from time import gmtime, strftime
 from typing import List, Optional
 from urllib.parse import urlparse, parse_qsl
 
 from pycardano.serialization import ByteString, CBORTag, IndefiniteList
 from pycardano.plutus import PlutusData, RawPlutusData
+
+from utils import format_plutus_dict
 
 HTTP_METHODS = {
     "GET": CBORTag(121, []),
@@ -137,7 +138,7 @@ class DataItem(PlutusData):
         return strftime("%Y-%m-%dT%H:%M:%SZ", gmtime(self.timestamp))
 
     def format_value(self):
-        return pformat(self.value.to_dict())
+        return format_plutus_dict(self.value.to_dict())
 
 
 @dataclass
