@@ -57,6 +57,16 @@ passphrase_arg_parser.add_argument(
     "--passphrase", help="Passphrase for oracle pool owner wallet", default=""
 )
 
+blueprint_arg_parser = ArgumentParser(add_help=False)
+blueprint_arg_parser.add_argument(
+    "--plutus-blueprint",
+    default="plutus.json",
+    help=(
+        "Path to a Plutus blueprint JSON file containing compiled contracts code. "
+        "Default: plutus.json"
+    ),
+)
+
 
 def format_plutus_dict(data: dict) -> str:
     if "int" in data:

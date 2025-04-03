@@ -22,13 +22,14 @@ from oracles import RegisteredOracle
 from models import DataItem, QuexResponse
 from wallet import OraclePoolOwnerWallet
 from networks import get_chain_context
-from utils import load_scripts, passphrase_arg_parser
+from utils import load_scripts, passphrase_arg_parser, blueprint_arg_parser
 
 
 def main():
     load_dotenv()
-    parser = argparse.ArgumentParser(parents=[passphrase_arg_parser])
-    parser.add_argument("--plutus-blueprint", default="plutus.json")
+    parser = argparse.ArgumentParser(
+        parents=[passphrase_arg_parser, blueprint_arg_parser]
+    )
     args = parser.parse_args()
     minting_policy, validator = load_scripts(args.plutus_blueprint)
 

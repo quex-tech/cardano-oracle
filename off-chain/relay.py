@@ -16,12 +16,20 @@ from oracles import OracleRepository
 from responses import ResponseRepository
 from wallet import OraclePoolOwnerWallet
 from networks import get_chain_context
-from utils import handle_tx, load_scripts, tx_arg_parser, passphrase_arg_parser
+from utils import (
+    handle_tx,
+    load_scripts,
+    tx_arg_parser,
+    passphrase_arg_parser,
+    blueprint_arg_parser,
+)
 
 
 def main():
     load_dotenv()
-    parser = argparse.ArgumentParser(parents=[tx_arg_parser, passphrase_arg_parser])
+    parser = argparse.ArgumentParser(
+        parents=[tx_arg_parser, passphrase_arg_parser, blueprint_arg_parser]
+    )
     parser.add_argument(
         "-X",
         "--request",
@@ -29,18 +37,25 @@ def main():
         choices=list(HTTP_METHODS.keys()),
         default="GET",
     )
-    parser.add_argument("-H", "--header", action="append", help="HTTP header(s)")
-    parser.add_argument("-d", "--data", help="HTTP body")
     parser.add_argument(
-        "-f", "--filter", default=".", help="jq filter to transfort response body"
+        "-H",
+        "--header",
+        action="append",
+        help='add an HTTP header. Example: --header "Content-Type: application/json"',
+    )
+    parser.add_argument("-d", "--data", help="HTTP body as plaintext")
+    parser.add_argument(
+        "-f",
+        "--filter",
+        default=".",
+        help="jq filter to transfort response body. Default: .",
     )
     parser.add_argument(
         "--oracle-url",
         default=os.environ.get("ORACLE_URL"),
         required="ORACLE_URL" not in os.environ,
-        help="Base URL of a QUEX Signer"
+        help="Base URL of a QUEX Signer",
     )
-    parser.add_argument("--plutus-blueprint", default="plutus.json")
     parser.add_argument("url", help="URL to fetch")
     parser.add_argument(
         "schema", help="Schema to encode response body, example: (string,(int,bool[]))"
