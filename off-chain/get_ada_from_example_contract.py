@@ -1,46 +1,50 @@
 #!/usr/bin/env python
 import argparse
-import json
-from pycardano import *
-import paths
+
+from dotenv import load_dotenv
+from pycardano import (
+    Address,
+    Redeemer,
+    TransactionBuilder,
+    TransactionOutput,
+    Unit,
+    plutus_script_hash,
+)
+
+from networks import get_chain_context
+from utils import handle_tx, parse_tx_input, load_scripts, tx_arg_parser
+from wallet import OraclePoolOwnerWallet
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("blueprint", help="path to plutus.json",
-                        type=argparse.FileType("r"))
-    parser.add_argument("utxo", help="reference UTxO with oracle response")
+    load_dotenv()
+    parser = argparse.ArgumentParser(parents=[tx_arg_parser])
     parser.add_argument(
-        "--submit", help="submit transaction", action='store_true')
+        "blueprint",
+        help="path to plutus.json",
+    )
+    parser.add_argument(
+        "utxo", help="reference UTxO with oracle response", type=parse_tx_input
+    )
     args = parser.parse_args()
 
-    nw = Network.TESTNET
-    sk = PaymentSigningKey.load(paths.POOL_OWNER_SIGNER_KEY)
-    vk = PaymentVerificationKey.from_signing_key(sk)
-    to_addr = Address(payment_part=vk.hash(), network=nw)
+    wallet = OraclePoolOwnerWallet.from_env(args.passphrase)
 
-    with args.blueprint as f:
-        blueprint = json.load(f)
+    (script,) = load_scripts(args.blueprint)
 
-    script = PlutusV3Script.fromhex(blueprint["validators"][0]["compiledCode"])
-    from_addr = Address(plutus_script_hash(script), network=nw)
+    context = get_chain_context()
+    from_addr = Address(plutus_script_hash(script), network=context.network)
+    to_addr = wallet.treasury.addr(context.network)
 
-    context = OgmiosV6ChainContext()
     utxo_to_spend = context.utxos(from_addr)[0]
     builder = TransactionBuilder(context)
     builder.add_input_address(to_addr)
     builder.add_script_input(utxo_to_spend, script, redeemer=Redeemer(Unit()))
-    builder.reference_inputs.add(parse_tx_input(args.utxo))
+    builder.reference_inputs.add(args.utxo)
     builder.add_output(TransactionOutput(to_addr, utxo_to_spend.output.amount))
-    signed_tx = builder.build_and_sign([sk], change_address=to_addr)
-    print("Transaction", signed_tx)
-    print("Transaction ID", signed_tx.id)
-    if args.submit:
-        context.submit_tx(signed_tx)
+    signed_tx = builder.build_and_sign([wallet.treasury.sk], change_address=to_addr)
+    handle_tx(signed_tx, context, args)
 
-def parse_tx_input(input: str):
-    tx, idx = input.split("#")
-    return TransactionInput.from_primitive([tx, int(idx)])
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

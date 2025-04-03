@@ -1,34 +1,33 @@
 #!/usr/bin/env python
 import argparse
-from pycardano import *
-import paths
+
+from dotenv import load_dotenv
+from pycardano import Address, TransactionBuilder, TransactionOutput, Value
+
+from networks import get_chain_context
+from utils import handle_tx, passphrase_arg_parser, tx_arg_parser
+from wallet import OraclePoolOwnerWallet
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("addr", help="recipient address")
+    load_dotenv()
+    parser = argparse.ArgumentParser(parents=[tx_arg_parser, passphrase_arg_parser])
+    parser.add_argument("addr", help="recipient address", type=Address.decode)
     parser.add_argument("ada", help="amount of ada", type=int)
-    parser.add_argument(
-        "--submit", help="submit transaction", action='store_true')
     args = parser.parse_args()
 
-    nw = Network.TESTNET
-    sk = PaymentSigningKey.load(paths.POOL_OWNER_SIGNER_KEY)
-    vk = PaymentVerificationKey.from_signing_key(sk)
-    from_addr = Address(payment_part=vk.hash(), network=nw)
-    to_addr = Address.decode(args.addr)
+    wallet = OraclePoolOwnerWallet.from_env(args.passphrase)
+    context = get_chain_context()
 
-    context = OgmiosV6ChainContext()
+    from_addr = wallet.treasury.addr(context.network)
+    to_addr = args.addr
+
     builder = TransactionBuilder(context)
-    builder.utxo_selectors = [LargestFirstSelector()]
     builder.add_input_address(from_addr)
     builder.add_output(TransactionOutput(to_addr, Value(args.ada * 1_000_000)))
-    signed_tx = builder.build_and_sign([sk], change_address=from_addr)
-    print("Transaction", signed_tx)
-    print("Transaction ID", signed_tx.id)
-    if args.submit:
-        context.submit_tx(signed_tx)
+    signed_tx = builder.build_and_sign([wallet.treasury.sk], change_address=from_addr)
+    handle_tx(signed_tx, context, args)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -1,0 +1,58 @@
+from argparse import ArgumentParser, Namespace
+import json
+from typing import List
+
+from pycardano import ChainContext, PlutusScript, Transaction, TransactionInput
+
+
+def handle_tx(signed_tx: Transaction, context: ChainContext, args: Namespace):
+    show_tx = "view_tx" not in args or args.view_tx
+    submit_tx = "submit" not in args or args.submit
+
+    if show_tx:
+        print("Transaction:", signed_tx)
+
+    print("Transaction ID:", signed_tx.id)
+
+    if submit_tx:
+        context.submit_tx(signed_tx)
+        print("Transaction submitted.")
+        return
+
+    print()
+    if not show_tx:
+        print("Add --view-tx to preview the transaction")
+    print("Add --submit to submit the transaction")
+
+
+def parse_tx_input(tx_input: str):
+    tx, idx = tx_input.split("#")
+    return TransactionInput.from_primitive([tx, int(idx)])
+
+
+def load_scripts(path: str) -> List[PlutusScript]:
+    with open(path, "r", encoding="utf-8") as f:
+        blueprint = json.loads(f.read())
+
+    version = int(blueprint["preamble"]["plutusVersion"].strip("v"))
+
+    return [
+        PlutusScript.from_version(version, bytes.fromhex(validator["compiledCode"]))
+        for validator in blueprint["validators"]
+    ]
+
+
+tx_arg_parser = ArgumentParser(add_help=False)
+tx_arg_parser.add_argument(
+    "--view-tx", action="store_true", help="View transaction contents"
+)
+tx_arg_parser.add_argument(
+    "--submit",
+    action="store_true",
+    help="Submit the transaction on-chain",
+)
+
+passphrase_arg_parser = ArgumentParser(add_help=False)
+passphrase_arg_parser.add_argument(
+    "--passphrase", help="Passphrase for oracle pool owner wallet", default=""
+)

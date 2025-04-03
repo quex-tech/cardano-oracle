@@ -1,8 +1,0 @@
-ORACLE_PRIVATE_KEY = "work/td-private-key.bin"
-ORACLE_PUBLIC_KEY = "work/td-public-key.bin"
-POOL_OWNER_SIGNER_KEY = "work/pool-owner.skey"
-POOL_OWNER_VERIFICATION_KEY = "work/pool-owner.vkey"
-BLUEPRINT = "work/plutus.json"
-RESPONSE = "work/response.json"
-POOL_ID = "work/pool-id.bin"
-ORACLE_UTXO = "work/oracle-utxo.txt"
