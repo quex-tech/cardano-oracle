@@ -53,6 +53,7 @@ executable gen-example-user-blueprint
     , plutus-tx ^>=1.42.0.0
     , plutus-tx-plugin ^>=1.42.0.0
     , scripts
+    , text
 
 test-suite quex-oracle-test
   type:                exitcode-stdio-1.0

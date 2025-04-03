@@ -20,13 +20,13 @@ def main():
     load_dotenv()
     parser = argparse.ArgumentParser(
         description="Generates oracle pool owner wallets and displays addresses",
-        parents=[passphrase_arg_parser],
     )
     subparsers = parser.add_subparsers(required=True)
     parser_generate = subparsers.add_parser(
         "generate",
         help="Generate a new wallet",
         description="Generates a new oracle pool owner wallet",
+        parents=[passphrase_arg_parser],
     )
     parser_generate.set_defaults(func=generate)
     parser_show = subparsers.add_parser(
@@ -39,6 +39,7 @@ def main():
             "Shows current wallet from WALLET_MNEMONIC environment variable; "
             "treasury and oracle storage addresses"
         ),
+        parents=[passphrase_arg_parser],
     )
     parser_show.set_defaults(func=show)
     args = parser.parse_args()

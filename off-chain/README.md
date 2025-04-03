@@ -83,10 +83,10 @@ Once the transaction gets confirmed, you can view registered oracles with:
 Example output:
 
 ```
-- UTxO: 89fdb53cee5c6e1829cb25a1a9fa4e7098afbd1c2563ecfcded23794ff28a337#0
-  Pool: TestRequestOraclePool
-  Public key: 037762fe9dd43dded3a9a57d078e3c7fa8d3274c183b6117ec3dab524e5b79247b
-  Response validity period: 15.0 minutes
+- UTxO:                     89fdb53cee5c6e1829cb25a1a9fa4e7098afbd1c2563ecfcded23794ff28a337#0
+  Pool:                     TestRequestOraclePool
+  Public key:               037762fe9dd43dded3a9a57d078e3c7fa8d3274c183b6117ec3dab524e5b79247b
+  Response validity period: 0:15:00
 ```
 
 You can unregister an oracle with:
@@ -129,3 +129,73 @@ Example output:
   Error:         0
   Value:         (12174962650,[(68080000,457539999999)])
 ```
+
+### Lock and unlock funds at a demo contract
+
+There is a demo contract that makes use of an oracle response.
+
+To compile it, you need Response currency symbol and PoolAction ID.
+
+Choose an action and get its PoolAction ID.
+
+Both `./responses.py` and `./relay.py` print PoolAction ID to the console.
+
+Get Response currency symbol:
+
+```sh
+./protocol.sh
+```
+
+Example output:
+
+```
+Responses address:        addr_test1wr957agk4gqha54mla35n9c5zfwl4u0sw72s0pk5mlhml7q4xsuun
+Response currency symbol: efd558979b0e353faa8ec7098d5ffd65d3b1bb6e1ca2daa16287400b
+```
+
+Edit [GenExampleUserBlueprint.hs](../on-chain/app/GenExampleUserBlueprint.hs).
+
+Paste Response currency symbol to `currencySymbol` and PoolAction ID to `poolActionID` constants.
+
+Edit `OracleDatum` type in [ExampleUserValidator.hs](../on-chain/src/ExampleUserValidator.hs) to reflect the response type.
+
+Edit `isDatumGood` function in the same file to represent the desired condition to unlock funds.
+
+Compile the script via [compile-contracts.sh](../compile-contracts.sh) or `cabal run gen-example-user-blueprint ../off-chain/plutus.user.json` from inside the Docker container.
+
+Lock funds at the contract address:
+
+```sh
+./demo.py lock <ada amount> --submit
+```
+
+The funds will be transferred from the oracle pool owner treasury.
+
+Once the transaction gets confirmed, you can view the locked funds along with other demo contract info:
+
+```sh
+./demo.py show
+```
+
+Example output:
+
+```
+Contract address:                  addr_test1wr8ucu6n8eu2wsj6yexz6xsj945n39sprexj8zr6vcqewpsa99lxy
+Expected response currency symbol: efd558979b0e353faa8ec7098d5ffd65d3b1bb6e1ca2daa16287400b
+Expected PoolAction ID:            48a82f43395f4ea4be50f4da6360058fa8cd12a113524cab63ae14dba205a29b
+Locked Lovelace:                   1000000
+```
+
+Get the address where the oracle responses are stored:
+
+```sh
+./protocol.sh
+```
+
+Get the funds back to the treasury:
+
+```sh
+./demo.py spend <response address> --submit
+```
+
+There must be a fresh response at the address (created less than about 20 minutes ago). If the response has expired, `./relay.py` a new one.

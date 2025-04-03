@@ -79,5 +79,5 @@ def format_plutus_dict(data: dict) -> str:
         fields = data["fields"]
         if fields:
             return f"({','.join([format_plutus_dict(field) for field in fields])})"
-        return {0: "false", 1: "true"}.get(data["constructor"], default="()")
+        return {0: "False", 1: "True"}.get(data["constructor"], default="()")
     return "UNKNOWN"

@@ -30,21 +30,20 @@ from wallet import OraclePoolOwnerWallet
 
 def main():
     load_dotenv()
-    parser = argparse.ArgumentParser(
-        description="Manages oracles in the pool", parents=[passphrase_arg_parser]
-    )
+    parser = argparse.ArgumentParser(description="Manages oracles in the pool")
     subparsers = parser.add_subparsers(required=True)
     parser_list = subparsers.add_parser(
         "list",
         help="List oracles in the pool",
         description="Lists oracles in the pool",
+        parents=[passphrase_arg_parser],
     )
     parser_list.set_defaults(func=list_oracles)
     parser_add = subparsers.add_parser(
         "add",
         help="Add an oracle to the pool",
         description="Adds an oracle to the pool",
-        parents=[tx_arg_parser],
+        parents=[passphrase_arg_parser, tx_arg_parser],
     )
     parser_add.add_argument("url", help="Base URL of the Quex Signer API")
     parser_add.add_argument(
@@ -65,7 +64,7 @@ def main():
         "delete",
         help="Delete an oracle from the pool",
         description="Delets an oracle from the pool",
-        parents=[tx_arg_parser],
+        parents=[passphrase_arg_parser, tx_arg_parser],
     )
     parser_delete.add_argument(
         "utxo",
@@ -233,14 +232,12 @@ class OracleRepository:
 def list_oracles(_, repo: OracleRepository, __):
     for oracle in repo.registered():
         pub_key = oracle.data.public_key.to_compressed_bytes().hex()
-        validity_period_minutes = (
-            oracle.data.response_validity_period.total_seconds() / 60
-        )
-
-        print(f"- UTxO: {oracle.input.transaction_id}#{oracle.input.index}")
-        print(f"  Pool: {", ".join([pool.name for pool in oracle.pools])}")
-        print(f"  Public key: {pub_key}")
-        print(f"  Response validity period: {validity_period_minutes} minutes")
+        utxo = f"{oracle.input.transaction_id}#{oracle.input.index}"
+        pool_names = ", ".join([pool.name for pool in oracle.pools])
+        print("- UTxO:                    ", utxo)
+        print("  Pool:                    ", pool_names)
+        print("  Public key:              ", pub_key)
+        print("  Response validity period:", oracle.data.response_validity_period)
 
 
 def add_oracle(context: ChainContext, repo: OracleRepository, args: argparse.Namespace):

@@ -14,7 +14,7 @@ def main():
     parser = argparse.ArgumentParser(parents=[blueprint_arg_parser])
     args = parser.parse_args()
     protocol = Protocol.load(args.plutus_blueprint)
-    print("Responses address       :", protocol.response_addr(get_network()))
+    print("Responses address:       ", protocol.response_addr(get_network()))
     print("Response currency symbol:", bytes(protocol.response_currency_symbol).hex())
 
 

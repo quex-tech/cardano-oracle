@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import argparse
 from dataclasses import dataclass
+from typing import List
 
 from pycardano import (
     ChainContext,
@@ -69,7 +70,7 @@ class ResponseRepository:
     context: ChainContext
     protocol: Protocol
 
-    def all(self):
+    def all(self) -> List[StoredResponse]:
         return [
             StoredResponse.from_utxo(utxo)
             for utxo in self.context.utxos(

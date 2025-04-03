@@ -36,7 +36,7 @@ cabal update
 After that, build the contracts with:
 
 ```sh
-cabal run gen-oracle-blueprint ../off-chain/plutus.json 
+cabal run gen-oracle-blueprint ../off-chain/plutus.json
 cabal run gen-example-user-blueprint ../off-chain/plutus.user.json
 ```
 

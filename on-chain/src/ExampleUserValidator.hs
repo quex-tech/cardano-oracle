@@ -45,35 +45,42 @@ import PlutusLedgerApi.V3
 import PlutusTx
 import PlutusTx.Prelude
 
-type ExampleUserValidatorParams = (AssetClass, BuiltinData, DiffMilliSeconds)
+
+type OracleDatum = Integer
+
+{-# INLINEABLE isDatumGood #-}
+isDatumGood :: OracleDatum -> Bool
+isDatumGood datum = datum > 50000000
 
 {-# INLINEABLE exampleUserTypedValidator #-}
-exampleUserTypedValidator :: ExampleUserValidatorParams -> ScriptContext -> Bool
-exampleUserTypedValidator (poolActionID, expectedOracleData, validityPeriodMs) scriptContext =
-  case (findOracleData txInfo poolActionID) of
+exampleUserTypedValidator :: AssetClass -> ScriptContext -> Bool
+exampleUserTypedValidator assetClass scriptContext =
+  case (findOracleData txInfo assetClass) of
     Just (posixTimeSeconds, err, oracleData) ->
       (err == 0)
-        && (oracleData == expectedOracleData)
+        && isDatumGood oracleData
         && notExpired
       where
         notExpired = after responseExpiresAt (txInfoValidRange txInfo)
-        responseExpiresAt = fromMilliSeconds (DiffMilliSeconds (1000 * posixTimeSeconds) + validityPeriodMs)
+        responseExpiresAt = fromMilliSeconds (DiffMilliSeconds (1000 * posixTimeSeconds) + validityPeriod)
+        validityPeriod = DiffMilliSeconds (30 * 60 * 1000)
     Nothing -> False
   where
     txInfo = scriptContextTxInfo scriptContext
 
-findOracleData :: TxInfo -> AssetClass -> Maybe (Integer, Integer, BuiltinData)
-findOracleData txInfo poolActionID =
+{-# INLINEABLE findOracleData #-}
+findOracleData :: TxInfo -> AssetClass -> Maybe (Integer, Integer, OracleDatum)
+findOracleData txInfo assetClass =
   case (map txInInfoResolved $ txInfoReferenceInputs txInfo) of
     [(TxOut _ value (OutputDatum datum) _)]
-      | (assetClassValueOf value poolActionID) == 1 -> Just (unsafeFromBuiltinData (getDatum datum))
+      | (assetClassValueOf value assetClass) == 1 -> Just (unsafeFromBuiltinData (getDatum datum))
     _ -> Nothing
 
-exampleUserUntypedValidator :: ExampleUserValidatorParams -> BuiltinData -> BuiltinUnit
+exampleUserUntypedValidator :: AssetClass -> BuiltinData -> BuiltinUnit
 exampleUserUntypedValidator params ctx =
   check (exampleUserTypedValidator params (unsafeFromBuiltinData ctx))
 
-exampleUserSpendingValidatorScript :: ExampleUserValidatorParams -> CompiledCode (BuiltinData -> BuiltinUnit)
+exampleUserSpendingValidatorScript :: AssetClass -> CompiledCode (BuiltinData -> BuiltinUnit)
 exampleUserSpendingValidatorScript params =
   $$(compile [||exampleUserUntypedValidator||])
     `unsafeApplyCode` liftCode plcVersion110 params

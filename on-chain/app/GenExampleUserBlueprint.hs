@@ -20,18 +20,24 @@ module Main where
 
 import Data.ByteString.Short qualified as Short
 import Data.Set qualified as Set
+import Data.Text (pack)
 import ExampleUserValidator
 import PlutusLedgerApi.Common (serialiseCompiledCode)
 import PlutusLedgerApi.V1
   ( AssetClass (..),
     CurrencySymbol (..),
-    DiffMilliSeconds (..),
-    TokenName (..),
-    toBuiltinData,
+    TokenName (..)
   )
 import PlutusTx.Blueprint
 import PlutusTx.Builtins.HasOpaque (stringToBuiltinByteStringHex)
 import System.Environment (getArgs)
+
+currencySymbol :: String
+currencySymbol = "efd558979b0e353faa8ec7098d5ffd65d3b1bb6e1ca2daa16287400b"
+
+poolActionID :: String
+poolActionID = "48a82f43395f4ea4be50f4da6360058fa8cd12a113524cab63ae14dba205a29b"
+-- "https://api.binance.com/api/v3/ticker/price?symbol=ADAUSDT" --filter ".price|tonumber*100000000|floor" "uint"
 
 myContractBlueprint :: ContractBlueprint
 myContractBlueprint =
@@ -39,7 +45,7 @@ myContractBlueprint =
     { contractId = Just "quex-oracle-user-example",
       contractPreamble = myPreamble,
       contractValidators = Set.fromList [validator],
-      contractDefinitions = deriveDefinitions @'[ExampleUserValidatorParams]
+      contractDefinitions = deriveDefinitions @'[AssetClass]
     }
 
 myPreamble :: Preamble
@@ -57,7 +63,14 @@ validator =
   MkValidatorBlueprint
     { validatorTitle = "Oracle Response Example User Spending Validator",
       validatorDescription = Nothing,
-      validatorParameters = [],
+      validatorParameters =
+        [ MkParameterBlueprint
+            { parameterTitle = Just "Oracle Response token asset class",
+              parameterDescription = Just . pack $ currencySymbol ++ "." ++ poolActionID,
+              parameterPurpose = Set.singleton Spend,
+              parameterSchema = definitionRef @AssetClass
+            }
+        ],
       validatorRedeemer =
         MkArgumentBlueprint
           { argumentTitle = Just "Redeemer for the validator",
@@ -67,11 +80,10 @@ validator =
           },
       validatorDatum = Nothing,
       validatorCompiled = do
-        let quexCS = CurrencySymbol (stringToBuiltinByteStringHex "efd558979b0e353faa8ec7098d5ffd65d3b1bb6e1ca2daa16287400b")
-        let poolActionID = stringToBuiltinByteStringHex "422d2f78b2cd55b635de0b9d822e597030523176feb8490e17cea8a58a36e29b"
-        let assetClass = AssetClass (quexCS, (TokenName poolActionID))
-        let params = (assetClass, toBuiltinData (321 :: Integer), DiffMilliSeconds (24 * 60 * 60 * 1000))
-        let code = Short.fromShort (serialiseCompiledCode (exampleUserSpendingValidatorScript params))
+        let cs = CurrencySymbol (stringToBuiltinByteStringHex currencySymbol)
+        let paID = stringToBuiltinByteStringHex poolActionID
+        let assetClass = AssetClass (cs, (TokenName paID))
+        let code = Short.fromShort (serialiseCompiledCode (exampleUserSpendingValidatorScript assetClass))
         Just (compiledValidator PlutusV3 code)
     }
 
