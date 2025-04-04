@@ -28,7 +28,8 @@ from wallet import OraclePoolOwnerWallet
 def main():
     load_dotenv()
     parser = argparse.ArgumentParser(
-        parents=[tx_arg_parser, passphrase_arg_parser, blueprint_arg_parser]
+        parents=[tx_arg_parser, passphrase_arg_parser, blueprint_arg_parser],
+        description="Initiates HTTPS requests and posts responses on-chain",
     )
     parser.add_argument(
         "-X",

@@ -27,7 +27,9 @@ RESPONSE_VALIDITY_PERIOD = timedelta(minutes=30)
 
 def main():
     load_dotenv()
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Locks and unlocks funds at the demo contract"
+    )
     user_blueprint_arg_parser = argparse.ArgumentParser(add_help=False)
     user_blueprint_arg_parser.add_argument(
         "--user-plutus-blueprint",

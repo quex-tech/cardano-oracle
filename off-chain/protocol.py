@@ -11,7 +11,9 @@ from utils import blueprint_arg_parser, load_scripts
 
 def main():
     load_dotenv()
-    parser = argparse.ArgumentParser(parents=[blueprint_arg_parser])
+    parser = argparse.ArgumentParser(
+        parents=[blueprint_arg_parser], description="Shows general protocol information"
+    )
     args = parser.parse_args()
     protocol = Protocol.load(args.plutus_blueprint)
     print("Responses address:       ", protocol.response_addr(get_network()))

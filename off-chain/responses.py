@@ -27,7 +27,8 @@ from wallet import OraclePoolOwnerWallet
 def main():
     load_dotenv()
     parser = argparse.ArgumentParser(
-        parents=[passphrase_arg_parser, blueprint_arg_parser]
+        parents=[passphrase_arg_parser, blueprint_arg_parser],
+        description="Shows oracle responses stored on-chain",
     )
     args = parser.parse_args()
 
