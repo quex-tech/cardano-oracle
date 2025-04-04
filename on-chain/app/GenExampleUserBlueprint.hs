@@ -33,7 +33,7 @@ import PlutusTx.Builtins.HasOpaque (stringToBuiltinByteStringHex)
 import System.Environment (getArgs)
 
 currencySymbol :: String
-currencySymbol = "efd558979b0e353faa8ec7098d5ffd65d3b1bb6e1ca2daa16287400b"
+currencySymbol = "56a571005b437f87a01367984b29d50900a50adfcbd2a39136f3d931"
 
 poolActionID :: String
 poolActionID = "48a82f43395f4ea4be50f4da6360058fa8cd12a113524cab63ae14dba205a29b"
