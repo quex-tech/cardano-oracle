@@ -72,12 +72,20 @@ def format_plutus_dict(data: dict) -> str:
     if "int" in data:
         return str(data["int"])
     if "bytes" in data:
-        return f'"{bytes.fromhex(data["bytes"]).decode()}"'
+        try:
+            return f'"{bytes.fromhex(data["bytes"]).decode()}"'
+        except UnicodeDecodeError:
+            return data["bytes"]
     if "list" in data:
         return f"[{','.join([format_plutus_dict(item) for item in data["list"]])}]"
     if "constructor" in data:
-        fields = data["fields"]
-        if fields:
-            return f"({','.join([format_plutus_dict(field) for field in fields])})"
-        return {0: "False", 1: "True"}.get(data["constructor"], default="()")
+        return format_plutus_constr(data)
     return "UNKNOWN"
+
+
+def format_plutus_constr(data: dict) -> str:
+    fields = data["fields"]
+    if fields:
+        return f"({','.join([format_plutus_dict(field) for field in fields])})"
+
+    return {0: "False", 1: "True"}.get(data["constructor"], "()")

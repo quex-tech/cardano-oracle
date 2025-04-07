@@ -2,14 +2,19 @@
 import argparse
 import os
 
-from pycardano.serialization import ByteString
+from Crypto.Cipher import AES
+from Crypto.Hash import SHA256
+from Crypto.Protocol.KDF import HKDF
 from dotenv import load_dotenv
+from ecdsa import SECP256k1, SigningKey, VerifyingKey
+from eth_keys import keys
+from pycardano.serialization import ByteString
 
 from models import (
     HTTP_METHODS,
     HTTPAction,
-    HTTPPrivatePatch,
     HTTPRequest,
+    UnencryptedHTTPPrivatePatch,
 )
 from networks import get_chain_context
 from oracles import OracleRepository
@@ -39,12 +44,30 @@ def main():
         default="GET",
     )
     parser.add_argument(
+        "--enc-url-suffix",
+        help=(
+            "URL suffix to append and send encrypted. "
+            "Examples: /mysecretpath, ?secret1=123&secret2=321, /mypath?secret=321"
+        ),
+    )
+    parser.add_argument(
         "-H",
         "--header",
         action="append",
         help='add an HTTP header. Example: --header "Content-Type: application/json"',
     )
+    parser.add_argument(
+        "--enc-header",
+        action="append",
+        help='add an HTTP header to send encrypted. Example: --enc-header "Api-Key: abcdef123"',
+    )
     parser.add_argument("-d", "--data", help="HTTP body as plaintext")
+    parser.add_argument(
+        "--enc-data", help="HTTP body as plaintext to send encrypted. Overrides --data"
+    )
+    parser.add_argument(
+        "--td-address", default="0x0000000000000000000000000000000000000000"
+    )
     parser.add_argument(
         "-f",
         "--filter",
@@ -71,13 +94,22 @@ def main():
     request = HTTPRequest.from_parts(
         method=args.request, url=args.url, headers=args.header, body=args.data
     )
+    patch = UnencryptedHTTPPrivatePatch.from_parts(
+        url_suffix=args.enc_url_suffix,
+        headers=args.enc_header,
+        body=args.enc_data,
+        td_address=args.td_address,
+    )
+
+    client = SignerClient(args.oracle_url)
+    public_key = client.public_key()
+
     action = HTTPAction(
         request=request,
-        patch=HTTPPrivatePatch.empty(),
+        patch=patch.encrypt(encrypt_func=lambda x: encrypt(x, public_key)),
         filter=ByteString(args.filter.encode()),
         schema=ByteString(args.schema.encode()),
     )
-    client = SignerClient(args.oracle_url)
     response = client.query(action)
 
     print("Oracle Response:")
@@ -85,8 +117,6 @@ def main():
     print("  Timestamp:", response.message.data.format_timestamp())
     print("  Error:    ", response.message.data.error)
     print("  Value:    ", response.message.data.format_value())
-
-    public_key = client.public_key()
 
     print("Oracle Info:")
     print("  Public key:", public_key.to_compressed_bytes().hex())
@@ -122,6 +152,29 @@ def main():
     handle_tx(
         signed_tx=response_repo.add_tx(response, oracle), context=context, args=args
     )
+
+
+def encrypt(message: bytes, recipient_pub_key: keys.PublicKey) -> bytes:
+    ephemeral_private_key = SigningKey.generate(curve=SECP256k1)
+    ephemeral_public_key = ephemeral_private_key.get_verifying_key().to_string()
+
+    # Calculate the shared secret point using ECDH
+    recipient_vk = VerifyingKey.from_string(recipient_pub_key.to_bytes(), SECP256k1)
+    shared_point = (
+        recipient_vk.pubkey.point * ephemeral_private_key.privkey.secret_multiplier
+    )
+    shared_key = shared_point.to_bytes()
+
+    # Derive the symmetric key using HKDF with SHA-256
+    hkdf_input = b"\x04" + ephemeral_public_key + b"\x04" + shared_key
+    symm_key = HKDF(hkdf_input, 32, salt=None, hashmod=SHA256)
+
+    # Encrypt the message using AES-GCM
+    nonce = os.urandom(16)
+    cipher = AES.new(symm_key, AES.MODE_GCM, nonce=nonce)
+    ciphertext, tag = cipher.encrypt_and_digest(message)
+
+    return ephemeral_public_key + nonce + tag + ciphertext
 
 
 if __name__ == "__main__":

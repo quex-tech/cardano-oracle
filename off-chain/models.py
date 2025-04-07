@@ -56,6 +56,60 @@ class RequestHeaderPatch(PlutusData):
 
 
 @dataclass
+class UnencryptedHTTPPrivatePatch:
+    path_suffix: Optional[bytes]
+    headers: List[RequestHeader]
+    parameters: List[QueryParameter]
+    body: Optional[bytes]
+    td_address: bytes
+
+    @classmethod
+    def from_parts(
+        cls,
+        url_suffix: Optional[str],
+        headers: List[str],
+        body: Optional[str],
+        td_address: str,
+    ):
+        parsed_url_suffix = urlparse(url_suffix)
+        parsed_headers = [RequestHeader.from_str(header) for header in (headers or [])]
+
+        parameters = [
+            QueryParameter(key=ByteString(k.encode()), value=ByteString(v.encode()))
+            for k, v in parse_qsl(parsed_url_suffix.query)
+        ]
+
+        return cls(
+            path_suffix=(
+                parsed_url_suffix.path.encode() if parsed_url_suffix.path else None
+            ),
+            headers=parsed_headers,
+            parameters=parameters,
+            body=body.encode() if body else None,
+            td_address=td_address.encode(),
+        )
+
+    def encrypt(self, encrypt_func):
+        headers = [
+            RequestHeaderPatch(h.key, ByteString(encrypt_func(h.value.value)))
+            for h in self.headers
+        ]
+        parameters = [
+            QueryParameterPatch(p.key, ByteString(encrypt_func(p.value.value)))
+            for p in self.parameters
+        ]
+        return HTTPPrivatePatch(
+            path_suffix=ByteString(
+                encrypt_func(self.path_suffix) if self.path_suffix else b""
+            ),
+            headers=_to_plutus_list(headers),
+            parameters=_to_plutus_list(parameters),
+            body=ByteString(encrypt_func(self.body) if self.body else b""),
+            td_address=ByteString(self.td_address),
+        )
+
+
+@dataclass
 class HTTPPrivatePatch(PlutusData):
     CONSTR_ID = 0
     path_suffix: ByteString
@@ -63,18 +117,6 @@ class HTTPPrivatePatch(PlutusData):
     parameters: IndefiniteList[QueryParameterPatch] | List[QueryParameterPatch]
     body: ByteString
     td_address: ByteString
-
-    @classmethod
-    def empty(cls):
-        return cls(
-            path_suffix=ByteString(bytes()),
-            headers=[],
-            parameters=[],
-            body=ByteString(bytes()),
-            td_address=ByteString(
-                "0x0000000000000000000000000000000000000000".encode()
-            ),
-        )
 
 
 @dataclass
@@ -104,10 +146,14 @@ class HTTPRequest(PlutusData):
             method=RawPlutusData.from_primitive(HTTP_METHODS[method]),
             host=ByteString(host),
             path=ByteString(path),
-            headers=IndefiniteList(parsed_headers) if parsed_headers else [],
-            parameters=IndefiniteList(parameters) if parameters else [],
+            headers=_to_plutus_list(parsed_headers),
+            parameters=_to_plutus_list(parameters),
             body=ByteString(body.encode() if body else b""),
         )
+
+
+def _to_plutus_list(items):
+    return IndefiniteList(items) if items else []
 
 
 @dataclass
