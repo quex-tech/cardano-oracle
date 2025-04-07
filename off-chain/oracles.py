@@ -2,6 +2,7 @@
 import argparse
 from dataclasses import dataclass
 from datetime import timedelta
+from itertools import chain
 from hashlib import sha256
 from typing import List, Optional, Iterable
 
@@ -9,11 +10,15 @@ from dotenv import load_dotenv
 from eth_keys import keys
 
 from pycardano import (
+    Address,
     ChainContext,
     DeserializeException,
-    ExtendedVerificationKey,
     MultiAsset,
+    NativeScript,
     PlutusData,
+    Redeemer,
+    SCRIPT_HASH_SIZE,
+    ScriptHash,
     ScriptPubkey,
     TransactionInput,
     Transaction,
@@ -23,29 +28,36 @@ from pycardano import (
 )
 
 from networks import get_chain_context
+from protocol import Protocol
 from signer_client import SignerClient
-from utils import handle_tx, parse_tx_input, passphrase_arg_parser, tx_arg_parser
+from utils import (
+    blueprint_arg_parser,
+    handle_tx,
+    parse_tx_input,
+    passphrase_arg_parser,
+    tx_arg_parser,
+)
 from wallet import OraclePoolOwnerWallet
 
 
 def main():
     load_dotenv()
-    parser = argparse.ArgumentParser(description="Manages oracles in the pool")
+    parser = argparse.ArgumentParser(description="Manages oracles in pools")
     subparsers = parser.add_subparsers(required=True)
     parser_list = subparsers.add_parser(
         "list",
-        help="List oracles in the pool",
-        description="Lists oracles in the pool",
-        parents=[passphrase_arg_parser],
+        help="List oracles in private and single-oracle pools",
+        description="Lists oracles in private and single-oracle pools",
+        parents=[passphrase_arg_parser, blueprint_arg_parser],
     )
     parser_list.set_defaults(func=list_oracles)
     parser_add = subparsers.add_parser(
         "add",
-        help="Add an oracle to the pool",
-        description="Adds an oracle to the pool",
-        parents=[passphrase_arg_parser, tx_arg_parser],
+        help="Add an oracle to a pool",
+        description="Adds an oracle to a pool",
+        parents=[passphrase_arg_parser, tx_arg_parser, blueprint_arg_parser],
     )
-    parser_add.add_argument("url", help="Base URL of the Quex Signer API")
+    parser_add.add_argument("url", help="Base URL of the oracle")
     parser_add.add_argument(
         "response_validity_period_minutes",
         type=int,
@@ -55,16 +67,26 @@ def main():
         ),
     )
     parser_add.add_argument(
-        "--name",
+        "--pool-name",
         default="TestRequestOraclePool",
-        help="Pool name. Default: TestRequestOraclePool",
+        help="Pool name for private pools. Default: TestRequestOraclePool",
+    )
+    parser_add.add_argument(
+        "--pool-type",
+        choices=["private", "single-oracle"],
+        default="private",
+        help=(
+            "private: owner can add arbitrary oracles, "
+            "single-oracle: 1 fixed oracle per pool. "
+            "Default: private"
+        ),
     )
     parser_add.set_defaults(func=add_oracle)
     parser_delete = subparsers.add_parser(
         "delete",
-        help="Delete an oracle from the pool",
-        description="Delets an oracle from the pool",
-        parents=[passphrase_arg_parser, tx_arg_parser],
+        help="Delete an oracle from a private pool",
+        description="Deletes an oracle from a private pool",
+        parents=[passphrase_arg_parser, tx_arg_parser, blueprint_arg_parser],
     )
     parser_delete.add_argument(
         "utxo",
@@ -76,7 +98,9 @@ def main():
 
     context = get_chain_context()
     repo = OracleRepository(
-        wallet=OraclePoolOwnerWallet.from_env(args.passphrase), context=context
+        wallet=OraclePoolOwnerWallet.from_env(args.passphrase),
+        context=context,
+        protocol=Protocol.load(args.plutus_blueprint),
     )
 
     args.func(context, repo, args)
@@ -113,36 +137,36 @@ class Oracle:
 
 
 @dataclass
-class OraclePoolOwner:
-    vk: ExtendedVerificationKey
-
-    def get_policy(self):
-        return ScriptPubkey(self.vk.hash())
-
-    def create_pool(self, name: str):
-        return OraclePool(name=name, owner=self)
-
-    def get_pools(self, assets: MultiAsset):
-        asset_dict: dict = assets.to_primitive()
-        name_dict: dict = asset_dict.get(bytes(self.get_policy().hash()), {})
-        return [self.create_pool(k.decode()) for k in name_dict.keys()]
-
-
-@dataclass
 class OraclePool:
-    name: str
-    owner: OraclePoolOwner
+    currency_symbol: ScriptHash
+    token_name: bytes
 
-    def get_assets(self):
+    @classmethod
+    def from_script(cls, script: NativeScript, token_name: str):
+        return cls(currency_symbol=script.hash(), token_name=token_name.encode())
+
+    @classmethod
+    def get_pools(cls, assets: MultiAsset):
+        asset_dict: dict = assets.to_primitive()
+        return [
+            cls(currency_symbol=ScriptHash(payload=cs), token_name=tn)
+            for cs in asset_dict.keys()
+            for tn in asset_dict[cs].keys()
+            if len(cs) == SCRIPT_HASH_SIZE
+        ]
+
+    @property
+    def assets(self) -> MultiAsset:
         return MultiAsset.from_primitive(
-            {bytes(self.owner.get_policy().hash()): {self.name.encode(): 1}}
+            {bytes(self.currency_symbol): {self.token_name: 1}}
         )
 
-    def pool_id(self):
-        return bytes(self.owner.get_policy().hash()) + self.name.encode()
+    @property
+    def id(self) -> bytes:
+        return bytes(self.currency_symbol) + self.token_name
 
     def pool_action_id(self, action_id: bytes) -> bytes:
-        return sha256(self.pool_id() + action_id).digest()
+        return sha256(self.id + action_id).digest()
 
 
 @dataclass
@@ -156,22 +180,22 @@ class RegisteredOracle:
 class OracleRepository:
     wallet: OraclePoolOwnerWallet
     context: ChainContext
+    protocol: Protocol
 
-    def add_tx(self, oracle: Oracle, pool_name: str) -> Transaction:
-        pool_owner = OraclePoolOwner(vk=self.wallet.treasury.vk)
-        pool = pool_owner.create_pool(pool_name)
-        assets = pool.get_assets()
+    def add_private_tx(self, oracle: Oracle, pool_name: str) -> Transaction:
+        policy = ScriptPubkey(self.wallet.treasury.vk.hash())
+        pool = OraclePool.from_script(policy, pool_name)
         nw = self.context.network
 
         builder = TransactionBuilder(self.context)
         builder.add_input_address(self.wallet.treasury.addr(nw))
-        builder.native_scripts = [pool_owner.get_policy()]
+        builder.native_scripts = [policy]
 
-        builder.mint = assets
+        builder.mint = pool.assets
         builder.add_output(
             TransactionOutput(
                 self.wallet.oracles.addr(nw),
-                Value(2_000_000, assets),
+                Value(2_000_000, pool.assets),
                 datum=oracle.to_plutus_data(),
             )
         )
@@ -181,8 +205,35 @@ class OracleRepository:
             change_address=self.wallet.treasury.addr(nw),
         )
 
-    def delete_tx(self, tx_input: TransactionInput) -> Optional[Transaction]:
-        pool_owner = OraclePoolOwner(vk=self.wallet.treasury.vk)
+    def add_single_oracle_tx(self, oracle: Oracle) -> Transaction:
+        plutus_oracle = oracle.to_plutus_data()
+        pool = OraclePool(
+            self.protocol.single_oracle_pool_currency_symbol,
+            sha256(plutus_oracle.to_cbor()).digest(),
+        )
+        nw = self.context.network
+
+        builder = TransactionBuilder(self.context)
+        builder.add_input_address(self.wallet.treasury.addr(nw))
+        builder.mint = pool.assets
+        builder.add_minting_script(
+            self.protocol.single_oracle_pool_validator,
+            redeemer=Redeemer(data=plutus_oracle),
+        )
+        builder.add_output(
+            TransactionOutput(
+                self.protocol.single_oracle_pool_addr(nw),
+                Value(2_000_000, pool.assets),
+                datum=plutus_oracle,
+            )
+        )
+
+        return builder.build_and_sign(
+            [self.wallet.treasury.sk],
+            change_address=self.wallet.treasury.addr(nw),
+        )
+
+    def delete_private_tx(self, tx_input: TransactionInput) -> Optional[Transaction]:
         nw = self.context.network
         utxo = next(
             (
@@ -199,7 +250,7 @@ class OracleRepository:
         builder = TransactionBuilder(self.context)
         builder.add_input_address(self.wallet.treasury.addr(nw))
         builder.add_input(utxo)
-        builder.native_scripts = [pool_owner.get_policy()]
+        builder.native_scripts = [ScriptPubkey(self.wallet.treasury.vk.hash())]
         builder.mint = MultiAsset() - utxo.output.amount.multi_asset
 
         return builder.build_and_sign(
@@ -208,11 +259,16 @@ class OracleRepository:
         )
 
     def registered(self) -> Iterable[RegisteredOracle]:
-        pool_owner = OraclePoolOwner(vk=self.wallet.treasury.vk)
-        nw = self.context.network
-        utxos = self.context.utxos(self.wallet.oracles.addr(nw))
-        for utxo in utxos:
-            pools = pool_owner.get_pools(utxo.output.amount.multi_asset)
+        return chain(
+            self.registered_at(self.wallet.oracles.addr(self.context.network)),
+            self.registered_at(
+                self.protocol.single_oracle_pool_addr(self.context.network)
+            ),
+        )
+
+    def registered_at(self, addr: Address) -> Iterable[RegisteredOracle]:
+        for utxo in self.context.utxos(addr):
+            pools = OraclePool.get_pools(utxo.output.amount.multi_asset)
             if not pools:
                 continue
 
@@ -233,11 +289,21 @@ def list_oracles(_, repo: OracleRepository, __):
     for oracle in repo.registered():
         pub_key = oracle.data.public_key.to_compressed_bytes().hex()
         utxo = f"{oracle.input.transaction_id}#{oracle.input.index}"
-        pool_names = ", ".join([pool.name for pool in oracle.pools])
-        print("- UTxO:                    ", utxo)
-        print("  Pool:                    ", pool_names)
-        print("  Public key:              ", pub_key)
-        print("  Response validity period:", oracle.data.response_validity_period)
+        for pool in oracle.pools:
+            pool_type = (
+                "single-oracle"
+                if pool.currency_symbol
+                == repo.protocol.single_oracle_pool_currency_symbol
+                else "private"
+            )
+            print("- UTxO:                 ", utxo)
+            print(
+                "  Pool:",
+            )
+            print("    ID:                 ", pool.id.hex())
+            print("    Type:               ", pool_type)
+            print("  Public key:           ", pub_key)
+            print("  Resp. validity period:", oracle.data.response_validity_period)
 
 
 def add_oracle(context: ChainContext, repo: OracleRepository, args: argparse.Namespace):
@@ -250,7 +316,11 @@ def add_oracle(context: ChainContext, repo: OracleRepository, args: argparse.Nam
         ),
     )
 
-    signed_tx = repo.add_tx(oracle, args.name)
+    signed_tx = (
+        repo.add_single_oracle_tx(oracle)
+        if args.pool_type == "single-oracle"
+        else repo.add_private_tx(oracle, args.pool_name)
+    )
 
     handle_tx(signed_tx, context, args)
 
@@ -258,10 +328,10 @@ def add_oracle(context: ChainContext, repo: OracleRepository, args: argparse.Nam
 def delete_oracle(
     context: ChainContext, repo: OracleRepository, args: argparse.Namespace
 ):
-    signed_tx = repo.delete_tx(args.utxo)
+    signed_tx = repo.delete_private_tx(args.utxo)
 
     if not signed_tx:
-        print("Oracle is not registered")
+        print("Oracle is not registered in the private pool")
 
     handle_tx(signed_tx, context, args)
 

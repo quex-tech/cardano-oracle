@@ -1,14 +1,9 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE Strict #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS_GHC -fno-full-laziness #-}
 {-# OPTIONS_GHC -fno-ignore-interface-pragmas #-}
@@ -81,8 +76,8 @@ mkPoolActionID (AssetClass (CurrencySymbol poolCS, TokenName poolTN)) actionID =
 findOracle :: TxInfo -> Maybe Oracle
 findOracle txInfo =
   case referenceInputs of
-    [(TxOut _ value (OutputDatum datum) _)] ->
-      case (findPoolID value) of
+    [TxOut _ value (OutputDatum datum) _] ->
+      case findPoolID value of
         Just poolID -> Just (poolID, pubKey, responseValidityPeriodMs)
           where
             (pubKey, responseValidityPeriodMs) = unsafeFromBuiltinData . getDatum $ datum :: (ETHCompressedPubKey, DiffMilliSeconds)

@@ -54,19 +54,19 @@ import PlutusTx.Prelude
 {-# INLINEABLE oracleResponseTypedValidator #-}
 oracleResponseTypedValidator :: DataItem -> ETHSignedMessage -> ScriptContext -> Bool
 oracleResponseTypedValidator (oldTimestamp, _, _) signedOracleMessage@(oracleMessage, _) scriptContext =
-  case (findOracle txInfo) of
+  case findOracle txInfo of
     Just oracle@(poolID, _, _) ->
       newTimestamp > oldTimestamp && oracleMessageIsValid && inputsAndOutputsAreValid
       where
         (newTimestamp, _, _) = unsafeFromBuiltinData dataItem :: DataItem
         oracleMessageIsValid = verifyOracleMessage txInfo oracle signedOracleMessage
-        inputsAndOutputsAreValid = case (findOwnInput scriptContext) of
-          Just (TxInInfo _ ownInput) -> case (symbols ownInputValue) of
+        inputsAndOutputsAreValid = case findOwnInput scriptContext of
+          Just (TxInInfo _ ownInput) -> case symbols ownInputValue of
             [a, ownCS] -> inputHasSinglePoolActionToken && outputIsValid && noTokensLeaked
               where
                 inputHasSinglePoolActionToken = a == adaSymbol && valueOf ownInputValue ownCS poolActionID == 1
-                outputIsValid = case (getContinuingOutputs scriptContext) of
-                  [(TxOut _ outputValue (OutputDatum responseDatum) _)] ->
+                outputIsValid = case getContinuingOutputs scriptContext of
+                  [TxOut _ outputValue (OutputDatum responseDatum) _] ->
                     (getDatum responseDatum == dataItem)
                       && (valueOf outputValue ownCS poolActionID == 1)
                       && (lovelaceValueOf outputValue >= lovelaceValueOf ownInputValue)

@@ -28,6 +28,7 @@ deactivate
 + `CARDANO_NETWORK`: Cardano blockchain to use. Can be `preview`, `preprod`, or `mainnet`. Default is `preview`.
 + `BLOCKFROST_PROJECT`: blockfrost.io project ID to communicate with Cardano. If none, a local Ogmius V6 instance is assumed to be running.
 + `ORACLE_URL`: base URL of a QUEX Signer API to be used by default.
++ `ORACLE_POOL_ID`: ID of the oracle pool in hex to be used by default.
 
 The environment variables can be set inside `.env` file:
 ```sh
@@ -36,6 +37,7 @@ WALLET_MNEMONIC="word word word word word ..."
 CARDANO_NETWORK=preview
 BLOCKFROST_PROJECT=previewAbCdEf...
 ORACLE_URL="http://10.13.192.131:8080"
+ORACLE_POOL_ID="5fe701cba1ca79c5cb02939af0ef06842352928872097cd2d14862f5bd9b9df648a61ec5846452fff12fc0666f27d4fe0b6a38628c316797708ce7db"
 ```
 
 ## Usage
@@ -68,9 +70,19 @@ Oracles address:  addr_test1vpj8dczy5483zxuusllu39lf6e3mnwpcjt2xx9knps25r2quxnvl
 
 ### Register an oracle
 
+Oracles can be added to a private pool or to a single-oracle pool.
+
+Private pools allow the owner to add and remove oracles arbitrarily.
+
+A single-oracle pool is immutable and contains a fixed single oracle and fixed oracle settings.
+
+To add an oracle to a private pool, run:
+
 ```sh
 ./oracles add <url> <response_validity_period_minutes> --submit [--passphrase <passprhase>]
 ```
+
+To add it to a single-oracle pool, add the `--pool-type single-oracle` option.
 
 With all these scripts you can preview transactions before submitting them to the blockchain by omitting the `--submit` flag and passing the `--view-tx` parameter.
 
@@ -83,13 +95,15 @@ Once the transaction gets confirmed, you can view registered oracles with:
 Example output:
 
 ```
-- UTxO:                     89fdb53cee5c6e1829cb25a1a9fa4e7098afbd1c2563ecfcded23794ff28a337#0
-  Pool:                     TestRequestOraclePool
-  Public key:               037762fe9dd43dded3a9a57d078e3c7fa8d3274c183b6117ec3dab524e5b79247b
-  Response validity period: 0:15:00
+- UTxO:                  89fdb53cee5c6e1829cb25a1a9fa4e7098afbd1c2563ecfcded23794ff28a337#0
+  Pool:
+    ID:                  96dc3580d31151f2e8e50203f...7374526571756573744f7261636c65506f6f6c
+    Type:                private
+  Public key:            037762fe9dd43dded3a9a57d078e3c7fa8d3274c183b6117ec3dab524e5b79247b
+  Resp. validity period: 0:15:00
 ```
 
-You can unregister an oracle with:
+You can unregister an oracle from a private pool with:
 
 ```sh
 ./oracles delete <UTxO> --submit
@@ -98,6 +112,8 @@ You can unregister an oracle with:
 ### Initiate an HTTPS request and post the response to the blockchain
 
 Put oracle URL to the `ORACLE_URL` environment variable or to the `.env` file. That way you will not have to specify `--oracle-url` parameter to the `relay.py` script each time.
+
+If you have registered oracles to multiple pools, put the pool ID into `ORACLE_POOL_ID` or add `--oracle-pool-id <pool id>` to the following script.
 
 Run:
 

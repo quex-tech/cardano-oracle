@@ -55,7 +55,13 @@ def main():
         "--oracle-url",
         default=os.environ.get("ORACLE_URL"),
         required="ORACLE_URL" not in os.environ,
-        help="Base URL of a QUEX Signer",
+        help="Base URL of the oracle API",
+    )
+    parser.add_argument(
+        "--oracle-pool-id",
+        default=os.environ.get("ORACLE_POOL_ID"),
+        type=bytes.fromhex,
+        help="ID of the oracle pool in hex",
     )
     parser.add_argument("url", help="URL to fetch")
     parser.add_argument(
@@ -77,8 +83,8 @@ def main():
     print("Oracle Response:")
     print("  Action ID:", response.message.action_id.hex())
     print("  Timestamp:", response.message.data.format_timestamp())
-    print("  Error:", response.message.data.error)
-    print("  Value:", response.message.data.format_value())
+    print("  Error:    ", response.message.data.error)
+    print("  Value:    ", response.message.data.format_value())
 
     public_key = client.public_key()
 
@@ -87,9 +93,16 @@ def main():
 
     wallet = OraclePoolOwnerWallet.from_env(args.passphrase)
     context = get_chain_context()
-    oracle_repo = OracleRepository(wallet=wallet, context=context)
+    protocol = Protocol.load(args.plutus_blueprint)
+    oracle_repo = OracleRepository(wallet=wallet, context=context, protocol=protocol)
     oracle = next(
-        (o for o in oracle_repo.registered() if o.data.public_key == public_key), None
+        (
+            o
+            for o in oracle_repo.registered()
+            if o.data.public_key == public_key
+            if not args.oracle_pool_id or o.pools[0].id == args.oracle_pool_id
+        ),
+        None,
     )
     if not oracle:
         print("  Oracle is not registered on-chain")
@@ -97,12 +110,10 @@ def main():
 
     print("  UTxO:", f"{oracle.input.transaction_id}#{oracle.input.index}")
     pool = oracle.pools[0]
-    print("  Pool:")
-    print("    Name:", pool.name)
-    print("    ID:", pool.pool_id().hex())
+    print("  Pool ID:", pool.id.hex())
+    print("  Public key:", oracle.data.public_key.to_compressed_bytes().hex())
+    print("  Resp. validity period:", oracle.data.response_validity_period)
     print("PoolAction ID:", pool.pool_action_id(response.message.action_id).hex())
-
-    protocol = Protocol.load(args.plutus_blueprint)
 
     response_repo = ResponseRepository(
         wallet=wallet, context=context, protocol=protocol

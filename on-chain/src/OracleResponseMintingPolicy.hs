@@ -65,19 +65,19 @@ makeIsDataSchemaIndexed ''OracleResponseMintingRedeemer [('Create, 0), ('Delete,
 oracleResponseTypedMintingPolicy :: Address -> OracleResponseMintingRedeemer -> ScriptContext -> Bool
 oracleResponseTypedMintingPolicy destinationAddress redeemer scriptContext =
   case redeemer of
-    (Create signedOracleMessage@(oracleMessage, _)) -> case (findOracle txInfo) of
+    (Create signedOracleMessage@(oracleMessage, _)) -> case findOracle txInfo of
       Just oracle@(poolID, _, _) ->
         mintedSingleCorrectToken && oracleMessageIsValid && outputIsValid
         where
           mintedSingleCorrectToken = mintedValue == singleton ownCS (mkPoolActionID poolID actionID) 1
           oracleMessageIsValid = verifyOracleMessage txInfo oracle signedOracleMessage
           outputIsValid = case outputsWithMintedToken of
-            [(TxOut address value (OutputDatum responseDatum) _)] ->
-              address == destinationAddress && (getDatum responseDatum) == dataItem && noOtherTokens
+            [TxOut address value (OutputDatum responseDatum) _] ->
+              address == destinationAddress && getDatum responseDatum == dataItem && noOtherTokens
               where
                 noOtherTokens = symbols value == [adaSymbol, ownCS]
             _ -> False
-          outputsWithMintedToken = filter (\o -> elem ownCS (symbols . txOutValue $ o)) (txInfoOutputs txInfo)
+          outputsWithMintedToken = filter (\o -> ownCS `elem` (symbols . txOutValue $ o)) (txInfoOutputs txInfo)
           (actionID, dataItem) = unsafeFromBuiltinData oracleMessage :: (ActionID, BuiltinData)
       Nothing -> False
     Delete -> isZero mintedValue

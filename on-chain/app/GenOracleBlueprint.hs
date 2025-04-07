@@ -1,6 +1,4 @@
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -9,12 +7,9 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE ViewPatterns #-}
 
 module Main where
 
@@ -22,11 +17,16 @@ import Data.ByteString.Short qualified as Short
 import Data.Set qualified as Set
 import Oracle (ETHSignedMessage)
 import OracleResponseMintingPolicy
+  ( OracleResponseMintingRedeemer,
+    oracleResponseMintingPolicyScript,
+  )
 import OracleResponseSpendingValidator
-import PlutusLedgerApi.Common (serialiseCompiledCode)
-import PlutusLedgerApi.V1 (Address, ScriptHash (..), SerialisedScript, scriptHashAddress)
+  ( oracleResponseSpendingValidatorScript,
+  )
+import PlutusLedgerApi.Common (BuiltinByteString, serialiseCompiledCode, toBuiltin)
+import PlutusLedgerApi.V1 (Address, DiffMilliSeconds, ScriptHash (..), SerialisedScript, scriptHashAddress)
 import PlutusTx.Blueprint
-import PlutusTx.Prelude (toBuiltin)
+import SingleOraclePoolValidator (singleOraclePoolValidatorScript)
 import System.Environment (getArgs)
 
 myContractBlueprint :: ContractBlueprint
@@ -34,8 +34,8 @@ myContractBlueprint =
   MkContractBlueprint
     { contractId = Just "quex-oracle",
       contractPreamble = myPreamble,
-      contractValidators = Set.fromList [mintingPolicy, validator],
-      contractDefinitions = deriveDefinitions @[Address, OracleResponseMintingRedeemer, ETHSignedMessage]
+      contractValidators = Set.fromList [mintingPolicy, validator, singleOraclePoolValidator],
+      contractDefinitions = deriveDefinitions @[Address, OracleResponseMintingRedeemer, ETHSignedMessage, (BuiltinByteString, DiffMilliSeconds)]
     }
 
 myPreamble :: Preamble
@@ -91,6 +91,32 @@ validator =
       validatorDatum = Nothing,
       validatorCompiled = do
         let code = Short.fromShort (serialiseCompiledCode oracleResponseSpendingValidatorScript)
+        Just (compiledValidator PlutusV3 code)
+    }
+
+singleOraclePoolValidator :: ValidatorBlueprint referencedTypes
+singleOraclePoolValidator =
+  MkValidatorBlueprint
+    { validatorTitle = "Single Oracle Pool Validator",
+      validatorDescription = Nothing,
+      validatorParameters = [],
+      validatorRedeemer =
+        MkArgumentBlueprint
+          { argumentTitle = Just "Redeemer for the single oracle pool validator",
+            argumentDescription = Nothing,
+            argumentPurpose = Set.fromList [Spend, Mint],
+            argumentSchema = definitionRef @(BuiltinByteString, DiffMilliSeconds)
+          },
+      validatorDatum =
+        Just
+          MkArgumentBlueprint
+            { argumentTitle = Just "Datum for the single oracle pool validator",
+              argumentDescription = Nothing,
+              argumentPurpose = Set.singleton Spend,
+              argumentSchema = definitionRef @(BuiltinByteString, DiffMilliSeconds)
+            },
+      validatorCompiled = do
+        let code = Short.fromShort (serialiseCompiledCode singleOraclePoolValidatorScript)
         Just (compiledValidator PlutusV3 code)
     }
 

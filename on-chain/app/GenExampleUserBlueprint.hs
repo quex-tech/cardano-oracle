@@ -1,6 +1,4 @@
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -9,12 +7,9 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE ViewPatterns #-}
 
 module Main where
 
@@ -82,7 +77,7 @@ validator =
       validatorCompiled = do
         let cs = CurrencySymbol (stringToBuiltinByteStringHex currencySymbol)
         let paID = stringToBuiltinByteStringHex poolActionID
-        let assetClass = AssetClass (cs, (TokenName paID))
+        let assetClass = AssetClass (cs, TokenName paID)
         let code = Short.fromShort (serialiseCompiledCode (exampleUserSpendingValidatorScript assetClass))
         Just (compiledValidator PlutusV3 code)
     }

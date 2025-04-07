@@ -55,7 +55,7 @@ isDatumGood datum = datum > 50000000
 {-# INLINEABLE exampleUserTypedValidator #-}
 exampleUserTypedValidator :: AssetClass -> ScriptContext -> Bool
 exampleUserTypedValidator assetClass scriptContext =
-  case (findOracleData txInfo assetClass) of
+  case findOracleData txInfo assetClass of
     Just (posixTimeSeconds, err, oracleData) ->
       (err == 0)
         && isDatumGood oracleData
@@ -71,9 +71,9 @@ exampleUserTypedValidator assetClass scriptContext =
 {-# INLINEABLE findOracleData #-}
 findOracleData :: TxInfo -> AssetClass -> Maybe (Integer, Integer, OracleDatum)
 findOracleData txInfo assetClass =
-  case (map txInInfoResolved $ txInfoReferenceInputs txInfo) of
-    [(TxOut _ value (OutputDatum datum) _)]
-      | (assetClassValueOf value assetClass) == 1 -> Just (unsafeFromBuiltinData (getDatum datum))
+  case map txInInfoResolved $ txInfoReferenceInputs txInfo of
+    [TxOut _ value (OutputDatum datum) _]
+      | assetClassValueOf value assetClass == 1 -> Just (unsafeFromBuiltinData (getDatum datum))
     _ -> Nothing
 
 exampleUserUntypedValidator :: AssetClass -> BuiltinData -> BuiltinUnit
