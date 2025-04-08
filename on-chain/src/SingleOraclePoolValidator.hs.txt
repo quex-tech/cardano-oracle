@@ -36,11 +36,9 @@ import PlutusLedgerApi.V1
   )
 import PlutusLedgerApi.V3
   ( Datum (Datum),
-    OutputDatum (OutputDatum),
     Redeemer (Redeemer),
     ScriptContext (..),
     TokenName (TokenName),
-    TxInfo (TxInfo, txInfoInputs, txInfoOutputs),
     TxOut (TxOut),
     adaSymbol,
   )
@@ -51,30 +49,27 @@ import PlutusTx
   )
 import PlutusTx.Builtins (serialiseData)
 import PlutusTx.Prelude
-import Validator (storageScriptInfo)
+import Validator (getInlineDatum, getSingleOutputWithCurrency, storageScriptInfo)
 
 {-# INLINEABLE singleOraclePoolTypedValidator #-}
 singleOraclePoolTypedValidator :: (BuiltinByteString, DiffMilliSeconds) -> ScriptContext -> Bool
 singleOraclePoolTypedValidator
   (pubKey, responseValidityPeriod)
-  (ScriptContext (TxInfo {txInfoInputs, txInfoOutputs}) (Redeemer rawRedeemer) scriptInfo) =
+  ctx@(ScriptContext {scriptContextRedeemer = Redeemer rawRedeemer}) =
     let tokenName = TokenName . sha2_256 . serialiseData $ rawRedeemer
-        (currencySymbol, ownAddress, maybeOldDatum) = storageScriptInfo scriptInfo txInfoInputs
-        hasCurrency (TxOut _ value _ _) = currencySymbol `elem` symbols value
+        (currencySymbol, ownAddress, maybeOldDatum) = storageScriptInfo ctx
+        (TxOut outputAddress outputValue outputDatum _) = getSingleOutputWithCurrency currencySymbol ctx
      in (lengthOfByteString pubKey == 33)
           && (responseValidityPeriod > 0)
-          && case filter hasCurrency txInfoOutputs of
-            [TxOut address value (OutputDatum (Datum newDatum)) _] ->
-              (address == ownAddress)
-                && (newDatum == rawRedeemer)
-                && (valueOf value currencySymbol tokenName == 1)
-                && (currencySymbolValueOf value currencySymbol == 1)
-                && (symbols value == [adaSymbol, currencySymbol])
-                && ( case maybeOldDatum of
-                       Just (Datum oldDatum) -> oldDatum == rawRedeemer
-                       Nothing -> True
-                   )
-            _ -> False
+          && (outputAddress == ownAddress)
+          && (getInlineDatum outputDatum == rawRedeemer)
+          && (valueOf outputValue currencySymbol tokenName == 1)
+          && (currencySymbolValueOf outputValue currencySymbol == 1)
+          && (symbols outputValue == [adaSymbol, currencySymbol])
+          && ( case maybeOldDatum of
+                 Just (Datum oldDatum) -> oldDatum == rawRedeemer
+                 Nothing -> True
+             )
 
 singleOraclePoolUntypedValidator :: BuiltinData -> BuiltinUnit
 singleOraclePoolUntypedValidator rawCtx =

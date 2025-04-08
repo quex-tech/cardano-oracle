@@ -150,7 +150,7 @@ def spend(context: ChainContext, args):
     signed_tx = builder.build_and_sign(
         [wallet.treasury.sk],
         change_address=to_addr,
-        auto_ttl_offset=TX_TTL_OFFSET.total_seconds(),
+        auto_ttl_offset=int(TX_TTL_OFFSET.total_seconds()),
     )
 
     handle_tx(signed_tx, context, args)

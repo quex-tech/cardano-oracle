@@ -28,11 +28,10 @@ import PlutusTx.Builtins.HasOpaque (stringToBuiltinByteStringHex)
 import System.Environment (getArgs)
 
 currencySymbol :: String
-currencySymbol = "56a571005b437f87a01367984b29d50900a50adfcbd2a39136f3d931"
+currencySymbol = "4057d367339745c83dbd613f3fd641a74f076879f533b7cfa6eaad2a"
 
 poolActionID :: String
-poolActionID = "48a82f43395f4ea4be50f4da6360058fa8cd12a113524cab63ae14dba205a29b"
--- "https://api.binance.com/api/v3/ticker/price?symbol=ADAUSDT" --filter ".price|tonumber*100000000|floor" "uint"
+poolActionID = "4928cea39057bfd8bc4cbc3d11a5ebc8cdaa4eb67064227e65dd8d64521d696f"
 
 myContractBlueprint :: ContractBlueprint
 myContractBlueprint =

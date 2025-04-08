@@ -15,16 +15,9 @@ module Main where
 
 import Data.ByteString.Short qualified as Short
 import Data.Set qualified as Set
-import Oracle (ETHSignedMessage)
-import OracleResponseMintingPolicy
-  ( OracleResponseMintingRedeemer,
-    oracleResponseMintingPolicyScript,
-  )
-import OracleResponseSpendingValidator
-  ( oracleResponseSpendingValidatorScript,
-  )
-import PlutusLedgerApi.Common (BuiltinByteString, serialiseCompiledCode, toBuiltin)
-import PlutusLedgerApi.V1 (Address, DiffMilliSeconds, ScriptHash (..), SerialisedScript, scriptHashAddress)
+import OracleResponseValidator
+import PlutusLedgerApi.Common (BuiltinByteString, serialiseCompiledCode)
+import PlutusLedgerApi.V1 (DiffMilliSeconds)
 import PlutusTx.Blueprint
 import SingleOraclePoolValidator (singleOraclePoolValidatorScript)
 import System.Environment (getArgs)
@@ -34,8 +27,8 @@ myContractBlueprint =
   MkContractBlueprint
     { contractId = Just "quex-oracle",
       contractPreamble = myPreamble,
-      contractValidators = Set.fromList [mintingPolicy, validator, singleOraclePoolValidator],
-      contractDefinitions = deriveDefinitions @[Address, OracleResponseMintingRedeemer, ETHSignedMessage, (BuiltinByteString, DiffMilliSeconds)]
+      contractValidators = Set.fromList [validator, singleOraclePoolValidator],
+      contractDefinitions = deriveDefinitions @[ETHSignedMessage, (BuiltinByteString, DiffMilliSeconds)]
     }
 
 myPreamble :: Preamble
@@ -48,49 +41,22 @@ myPreamble =
       preambleLicense = Nothing
     }
 
-mintingPolicy :: ValidatorBlueprint referencedTypes
-mintingPolicy =
-  MkValidatorBlueprint
-    { validatorTitle = "Oracle Response Minting Validator",
-      validatorDescription = Nothing,
-      validatorParameters =
-        [ MkParameterBlueprint
-            { parameterTitle = Just "Oracle Response Spending Validator Address",
-              parameterDescription = Nothing,
-              parameterPurpose = Set.singleton Mint,
-              parameterSchema = definitionRef @Address
-            }
-        ],
-      validatorRedeemer =
-        MkArgumentBlueprint
-          { argumentTitle = Just "Redeemer for the minting policy",
-            argumentDescription = Nothing,
-            argumentPurpose = Set.singleton Mint,
-            argumentSchema = definitionRef @OracleResponseMintingRedeemer
-          },
-      validatorDatum = Nothing,
-      validatorCompiled = do
-        let script = oracleResponseMintingPolicyScript . toAddress . serialiseCompiledCode $ oracleResponseSpendingValidatorScript
-        let code = Short.fromShort (serialiseCompiledCode script)
-        Just (compiledValidator PlutusV3 code)
-    }
-
 validator :: ValidatorBlueprint referencedTypes
 validator =
   MkValidatorBlueprint
-    { validatorTitle = "Oracle Response Spending Validator",
+    { validatorTitle = "Oracle Response Validator",
       validatorDescription = Nothing,
       validatorParameters = [],
       validatorRedeemer =
         MkArgumentBlueprint
-          { argumentTitle = Just "Redeemer for the spending validator",
+          { argumentTitle = Just "Redeemer for the response validator",
             argumentDescription = Nothing,
-            argumentPurpose = Set.singleton Spend,
+            argumentPurpose = Set.fromList [Spend, Mint],
             argumentSchema = definitionRef @ETHSignedMessage
           },
       validatorDatum = Nothing,
       validatorCompiled = do
-        let code = Short.fromShort (serialiseCompiledCode oracleResponseSpendingValidatorScript)
+        let code = Short.fromShort (serialiseCompiledCode oracleResponseValidatorScript)
         Just (compiledValidator PlutusV3 code)
     }
 
@@ -119,15 +85,6 @@ singleOraclePoolValidator =
         let code = Short.fromShort (serialiseCompiledCode singleOraclePoolValidatorScript)
         Just (compiledValidator PlutusV3 code)
     }
-
-toAddress :: SerialisedScript -> Address
-toAddress =
-  scriptHashAddress
-    . ScriptHash
-    . toBuiltin
-    . compiledValidatorHash
-    . compiledValidator PlutusV3
-    . Short.fromShort
 
 writeBlueprintToFile :: FilePath -> IO ()
 writeBlueprintToFile path = writeBlueprint path myContractBlueprint

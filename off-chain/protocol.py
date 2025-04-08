@@ -31,23 +31,19 @@ def main():
 
 @dataclass
 class Protocol:
-    minting_policy: PlutusScript
-    spending_validator: PlutusScript
+    response_validator: PlutusScript
     single_oracle_pool_validator: PlutusScript
 
     @classmethod
     def load(cls, blueprint_path: str):
-        minting_policy, validator, single_oracle_pool_validator = load_scripts(
-            blueprint_path
-        )
+        response_validator, single_oracle_pool_validator = load_scripts(blueprint_path)
         return cls(
-            minting_policy=minting_policy,
-            spending_validator=validator,
+            response_validator=response_validator,
             single_oracle_pool_validator=single_oracle_pool_validator,
         )
 
     def response_addr(self, nw: Network) -> Address:
-        return Address(plutus_script_hash(self.spending_validator), network=nw)
+        return Address(plutus_script_hash(self.response_validator), network=nw)
 
     def single_oracle_pool_addr(self, nw: Network) -> Address:
         return Address(
@@ -56,7 +52,7 @@ class Protocol:
 
     @property
     def response_currency_symbol(self) -> ScriptHash:
-        return plutus_script_hash(self.minting_policy)
+        return plutus_script_hash(self.response_validator)
 
     @property
     def single_oracle_pool_currency_symbol(self) -> ScriptHash:

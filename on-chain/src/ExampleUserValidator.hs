@@ -35,7 +35,7 @@ import PlutusLedgerApi.V1
   )
 import PlutusLedgerApi.V3
   ( OutputDatum (..),
-    ScriptContext (scriptContextTxInfo),
+    ScriptContext (ScriptContext),
     TxInfo (txInfoReferenceInputs),
     TxOut (..),
     getDatum,
@@ -45,36 +45,31 @@ import PlutusLedgerApi.V3
 import PlutusTx
 import PlutusTx.Prelude
 
+type OracleResponse = Integer
 
-type OracleDatum = Integer
-
-{-# INLINEABLE isDatumGood #-}
-isDatumGood :: OracleDatum -> Bool
-isDatumGood datum = datum > 50000000
+{-# INLINEABLE isResponseGood #-}
+isResponseGood :: OracleResponse -> Bool
+isResponseGood datum = datum > 50000000
 
 {-# INLINEABLE exampleUserTypedValidator #-}
 exampleUserTypedValidator :: AssetClass -> ScriptContext -> Bool
-exampleUserTypedValidator assetClass scriptContext =
-  case findOracleData txInfo assetClass of
-    Just (posixTimeSeconds, err, oracleData) ->
-      (err == 0)
-        && isDatumGood oracleData
-        && notExpired
-      where
-        notExpired = after responseExpiresAt (txInfoValidRange txInfo)
-        responseExpiresAt = fromMilliSeconds (DiffMilliSeconds (1000 * posixTimeSeconds) + validityPeriod)
-        validityPeriod = DiffMilliSeconds (30 * 60 * 1000)
-    Nothing -> False
+exampleUserTypedValidator assetClass (ScriptContext txInfo _ _) =
+  traceIfFalse "Error != 0" (err == 0)
+    && traceIfFalse "Response is bad" (isResponseGood oracleData)
+    && traceIfFalse "Response has expired" notExpired
   where
-    txInfo = scriptContextTxInfo scriptContext
+    (posixTimeSeconds, err, oracleData) = getOracleResponse txInfo assetClass
+    notExpired = after responseExpiresAt (txInfoValidRange txInfo)
+    responseExpiresAt = fromMilliSeconds (DiffMilliSeconds (1000 * posixTimeSeconds) + validityPeriod)
+    validityPeriod = DiffMilliSeconds (30 * 60 * 1000)
 
-{-# INLINEABLE findOracleData #-}
-findOracleData :: TxInfo -> AssetClass -> Maybe (Integer, Integer, OracleDatum)
-findOracleData txInfo assetClass =
+{-# INLINEABLE getOracleResponse #-}
+getOracleResponse :: TxInfo -> AssetClass -> (Integer, Integer, OracleResponse)
+getOracleResponse txInfo assetClass =
   case map txInInfoResolved $ txInfoReferenceInputs txInfo of
     [TxOut _ value (OutputDatum datum) _]
-      | assetClassValueOf value assetClass == 1 -> Just (unsafeFromBuiltinData (getDatum datum))
-    _ -> Nothing
+      | assetClassValueOf value assetClass == 1 -> unsafeFromBuiltinData (getDatum datum)
+    _ -> traceError "Response is not found"
 
 exampleUserUntypedValidator :: AssetClass -> BuiltinData -> BuiltinUnit
 exampleUserUntypedValidator params ctx =

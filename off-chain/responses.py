@@ -99,7 +99,7 @@ class ResponseRepository:
             for r in existing_responses:
                 builder.add_script_input(
                     r.utxo,
-                    self.protocol.spending_validator,
+                    self.protocol.response_validator,
                     redeemer=Redeemer(data=response),
                 )
             tokens_to_burn = len(existing_responses) - 1
@@ -112,16 +112,14 @@ class ResponseRepository:
                     }
                 )
                 builder.add_minting_script(
-                    self.protocol.minting_policy,
-                    redeemer=Redeemer(data=DeleteOracleResponseMintingRedeemer()),
+                    self.protocol.response_validator,
+                    redeemer=Redeemer(data=response),
                 )
         else:
             builder.mint = assets
             builder.add_minting_script(
-                self.protocol.minting_policy,
-                redeemer=Redeemer(
-                    data=CreateOracleResponseMintingRedeemer(signed_message=response)
-                ),
+                self.protocol.response_validator,
+                redeemer=Redeemer(data=response),
             )
 
         builder.reference_inputs.add(oracle.input)
@@ -141,17 +139,6 @@ class ResponseRepository:
                 int(oracle.data.response_validity_period.total_seconds() * 0.9), 10_000
             ),
         )
-
-
-@dataclass
-class CreateOracleResponseMintingRedeemer(PlutusData):
-    CONSTR_ID = 0
-    signed_message: QuexResponse
-
-
-@dataclass
-class DeleteOracleResponseMintingRedeemer(PlutusData):
-    CONSTR_ID = 1
 
 
 if __name__ == "__main__":

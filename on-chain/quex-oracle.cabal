@@ -12,11 +12,10 @@ library scripts
   import:         options
   hs-source-dirs: src
   exposed-modules:
-    OracleResponseMintingPolicy
-    OracleResponseSpendingValidator
     ExampleUserValidator
-    Oracle
     SingleOraclePoolValidator
+    OracleResponseValidator
+    Validator
 
   build-depends:
     , base
