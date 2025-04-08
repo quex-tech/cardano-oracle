@@ -173,9 +173,9 @@ Edit [GenExampleUserBlueprint.hs](../on-chain/app/GenExampleUserBlueprint.hs).
 
 Paste Response currency symbol to `currencySymbol` and PoolAction ID to `poolActionID` constants.
 
-Edit `OracleDatum` type in [ExampleUserValidator.hs](../on-chain/src/ExampleUserValidator.hs) to reflect the response type.
+Edit `OracleResponse` type in [ExampleUserValidator.hs](../on-chain/src/ExampleUserValidator.hs) to reflect the response type.
 
-Edit `isDatumGood` function in the same file to represent the desired condition to unlock funds.
+Edit `isResponseGood` function in the same file to represent the desired condition to unlock funds.
 
 Compile the script via [compile-contracts.sh](../compile-contracts.sh) or `cabal run gen-example-user-blueprint ../off-chain/plutus.user.json` from inside the Docker container.
 
