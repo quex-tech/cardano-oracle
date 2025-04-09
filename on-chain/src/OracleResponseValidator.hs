@@ -83,7 +83,7 @@ oracleResponseTypedValidator
         (actionID, rawDataItem) = unsafeFromBuiltinData oracleMessage :: (ActionID, BuiltinData)
         (newTimestamp, _, _) = unsafeFromBuiltinData rawDataItem :: DataItem
         poolActionID = mkPoolActionID poolID actionID
-        (currencySymbol, ownAddress, maybeOldDatum) = storageScriptInfo scriptInfo txInfoInputs
+        (currencySymbol, ownAddress, maybeOldDatum, spentTokenNames) = storageScriptInfo scriptInfo txInfoInputs
         hasCurrency (TxOut _ value _ _) = currencySymbol `elem` symbols value
      in verifyOracleMessage signedOracleMessage oracleDatum txInfoValidRange
           && case filter hasCurrency txInfoOutputs of
@@ -93,6 +93,10 @@ oracleResponseTypedValidator
                 && (valueOf value currencySymbol poolActionID == 1)
                 && (currencySymbolValueOf value currencySymbol == 1)
                 && (symbols value == [adaSymbol, currencySymbol])
+                && ( case spentTokenNames of
+                       [tn] -> tn == poolActionID
+                       _ -> True
+                   )
                 && ( case maybeOldDatum of
                        Just (Datum rawOldDatum) -> newTimestamp > oldTimestamp
                          where

@@ -59,7 +59,7 @@ singleOraclePoolTypedValidator
   (pubKey, responseValidityPeriod)
   (ScriptContext (TxInfo {txInfoInputs, txInfoOutputs}) (Redeemer rawRedeemer) scriptInfo) =
     let tokenName = TokenName . sha2_256 . serialiseData $ rawRedeemer
-        (currencySymbol, ownAddress, maybeOldDatum) = storageScriptInfo scriptInfo txInfoInputs
+        (currencySymbol, ownAddress, maybeOldDatum, spentTokenNames) = storageScriptInfo scriptInfo txInfoInputs
         hasCurrency (TxOut _ value _ _) = currencySymbol `elem` symbols value
      in (lengthOfByteString pubKey == 33)
           && (responseValidityPeriod > 0)
@@ -70,6 +70,10 @@ singleOraclePoolTypedValidator
                 && (valueOf value currencySymbol tokenName == 1)
                 && (currencySymbolValueOf value currencySymbol == 1)
                 && (symbols value == [adaSymbol, currencySymbol])
+                && ( case spentTokenNames of
+                       [tn] -> tn == tokenName
+                       _ -> True
+                   )
                 && ( case maybeOldDatum of
                        Just (Datum oldDatum) -> oldDatum == rawRedeemer
                        Nothing -> True
