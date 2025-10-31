@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import argparse
 from dataclasses import dataclass
+import os
 
 from dotenv import load_dotenv
 from pycardano import Address, Network, PlutusScript, ScriptHash, plutus_script_hash
@@ -17,6 +18,10 @@ def main():
     args = parser.parse_args()
     protocol = Protocol.load(args.plutus_blueprint)
     nw = get_network()
+    print(
+        "Network:                           ",
+        os.environ.get("CARDANO_NETWORK", "preview"),
+    )
     print("Response address:                  ", protocol.response_addr(nw))
     print(
         "Response currency symbol:          ",
