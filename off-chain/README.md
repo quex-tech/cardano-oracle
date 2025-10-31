@@ -17,7 +17,9 @@ Install dependencies
 pip install -r requirements.txt
 ```
 
-To deactivate virual environment, type
+You are ready to go.
+
+To deactivate the virual environment later, type
 ```sh
 deactivate
 ```
@@ -45,7 +47,7 @@ ORACLE_POOL_ID="5fe701cba1ca79c5cb02939af0ef06842352928872097cd2d14862f5bd9b9df6
 ### Generate a wallet
 
 ```sh
-./wallet generate --passphrase <passprhase>
+./wallet.py generate --passphrase <passprhase>
 ```
 
 Prints `WALLET_MNEMONIC` value. Put it into the `.env` file or set the environment variable.
@@ -57,7 +59,7 @@ Also shows oracle pool owner addresses. Top up the treasury address.
 You can print these addresses again with:
 
 ```sh
-./wallet show --passphrase <passprhase>
+./wallet.py show --passphrase <passprhase>
 ```
 
 Example output:
@@ -79,7 +81,7 @@ A single-oracle pool is immutable and contains a fixed single oracle and fixed o
 To add an oracle to a private pool, run:
 
 ```sh
-./oracles add <url> <response_validity_period_minutes> --submit [--passphrase <passprhase>]
+./oracles.py add <url> <response_validity_period_minutes> --submit [--passphrase <passprhase>]
 ```
 
 To add it to a single-oracle pool, add the `--pool-type single-oracle` option.
@@ -89,7 +91,7 @@ With all these scripts you can preview transactions before submitting them to th
 Once the transaction gets confirmed, you can view registered oracles with:
 
 ```sh
-./oracles list
+./oracles.py list
 ```
 
 Example output:
@@ -106,7 +108,7 @@ Example output:
 You can unregister an oracle from a private pool with:
 
 ```sh
-./oracles delete <UTxO> --submit
+./oracles.py delete <UTxO> --submit
 ```
 
 ### Initiate an HTTPS request and post the response to the blockchain
@@ -159,7 +161,7 @@ Both `./responses.py` and `./relay.py` print PoolAction ID to the console.
 Get Response currency symbol:
 
 ```sh
-./protocol.sh
+./protocol.py
 ```
 
 Example output:
@@ -205,7 +207,7 @@ Locked Lovelace:                   1000000
 Get the address where the oracle responses are stored:
 
 ```sh
-./protocol.sh
+./protocol.py
 ```
 
 Get the funds back to the treasury:
