@@ -30,6 +30,7 @@ import PlutusLedgerApi.V1
   ( AssetClass (AssetClass),
     DiffMilliSeconds (DiffMilliSeconds),
     POSIXTimeRange,
+    PubKeyHash,
     after,
     currencySymbolValueOf,
     flattenValue,
@@ -45,7 +46,7 @@ import PlutusLedgerApi.V3
     ScriptContext (ScriptContext, scriptContextRedeemer),
     TokenName (TokenName),
     TxInInfo (txInInfoResolved),
-    TxInfo (TxInfo, txInfoInputs, txInfoOutputs, txInfoReferenceInputs, txInfoValidRange),
+    TxInfo (TxInfo, txInfoInputs, txInfoOutputs, txInfoReferenceInputs, txInfoSignatories, txInfoValidRange),
     TxOut (TxOut),
     Value,
     adaSymbol,
@@ -78,21 +79,22 @@ type ETHSignedMessage = (BuiltinData, ETHSignature)
 oracleResponseTypedValidator :: ETHSignedMessage -> ScriptContext -> Bool
 oracleResponseTypedValidator
   signedOracleMessage@(oracleMessage, _)
-  (ScriptContext txInfo@(TxInfo {txInfoInputs, txInfoOutputs, txInfoValidRange}) _ scriptInfo) =
+  (ScriptContext txInfo@(TxInfo {txInfoInputs, txInfoOutputs, txInfoValidRange, txInfoSignatories}) _ scriptInfo) =
     let (poolID, oracleDatum) = getOracle txInfo
-        (actionID, rawDataItem) = unsafeFromBuiltinData oracleMessage :: (ActionID, BuiltinData)
+        (actionID, rawDataItem, relayer) = unsafeFromBuiltinData oracleMessage :: (ActionID, BuiltinData, PubKeyHash)
         (newTimestamp, _, _) = unsafeFromBuiltinData rawDataItem :: DataItem
         poolActionID = mkPoolActionID poolID actionID
         (currencySymbol, ownAddress, maybeOldDatum, spentTokenNames) = storageScriptInfo scriptInfo txInfoInputs
         hasCurrency (TxOut _ value _ _) = currencySymbol `elem` symbols value
      in verifyOracleMessage signedOracleMessage oracleDatum txInfoValidRange
+          && (relayer `elem` txInfoSignatories)
           && case filter hasCurrency txInfoOutputs of
             [TxOut address value (OutputDatum (Datum newDatum)) _] ->
-              (address == ownAddress)
-                && (newDatum == rawDataItem)
-                && (valueOf value currencySymbol poolActionID == 1)
-                && (currencySymbolValueOf value currencySymbol == 1)
-                && (symbols value == [adaSymbol, currencySymbol])
+              address == ownAddress
+                && newDatum == rawDataItem
+                && valueOf value currencySymbol poolActionID == 1
+                && currencySymbolValueOf value currencySymbol == 1
+                && symbols value == [adaSymbol, currencySymbol]
                 && ( case spentTokenNames of
                        [tn] -> tn == poolActionID
                        _ -> True
@@ -144,7 +146,7 @@ verifyOracleMessage signedOracleMessage@(oracleMessage, _) (pubKey, responseVali
     responseSignatureIsValid = verifyETHSignature pubKey signedOracleMessage
     responseIsNotExpired = after responseExpiresAt validRange
     responseExpiresAt = fromMilliSeconds (DiffMilliSeconds (1000 * posixTimeSeconds) + responseValidityPeriodMs)
-    (_, (posixTimeSeconds, _, _)) = unsafeFromBuiltinData oracleMessage :: (ActionID, DataItem)
+    (_, (posixTimeSeconds, _, _), _) = unsafeFromBuiltinData oracleMessage :: (ActionID, DataItem, PubKeyHash)
 
 {-# INLINEABLE verifyETHSignature #-}
 verifyETHSignature :: ETHCompressedPubKey -> ETHSignedMessage -> Bool

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from urllib.parse import urljoin
 import requests
 from eth_keys import keys
-from models import HTTPAction, QuexResponse
+from models import HTTPActionWithProof, QuexResponse
 
 TIMEOUT = 30
 
@@ -12,10 +12,10 @@ TIMEOUT = 30
 class SignerClient:
     url: str
 
-    def query(self, action: HTTPAction) -> QuexResponse:
+    def query(self, action: HTTPActionWithProof, relayer: bytes) -> QuexResponse:
         response = requests.post(
             urljoin(self.url, "query"),
-            json={"action": b64encode(action.to_cbor()).decode()},
+            json={"action": b64encode(action.to_cbor()).decode(), "relayer": relayer.hex()},
             timeout=TIMEOUT,
         )
         response.raise_for_status()

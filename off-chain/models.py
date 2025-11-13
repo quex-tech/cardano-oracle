@@ -4,6 +4,7 @@ from time import gmtime, strftime
 from typing import List, Optional
 from urllib.parse import urlparse, parse_qsl
 
+from eth_utils import keccak
 from pycardano.serialization import ByteString, CBORTag, IndefiniteList
 from pycardano.plutus import PlutusData, RawPlutusData
 
@@ -164,6 +165,16 @@ class HTTPAction(PlutusData):
     schema: ByteString
     filter: ByteString
 
+    def action_id(self) -> bytes:
+        return keccak(self.to_cbor())
+
+
+@dataclass
+class HTTPActionWithProof(PlutusData):
+    CONSTR_ID = 0
+    action: HTTPAction
+    proof: ByteString
+
 
 @dataclass
 class DataItem(PlutusData):
@@ -192,12 +203,14 @@ class QuexMessage(PlutusData):
     CONSTR_ID = 0
     action_id: bytes
     data: DataItem
+    relayer: ByteString
 
     @staticmethod
     def parse(value: dict):
         return QuexMessage(
             action_id=b64decode(value["action_id"]),
             data=DataItem.parse(value["data_item"]),
+            relayer=ByteString(bytes.fromhex(str(value["relayer"]).removeprefix("0x"))),
         )
 
 

@@ -13,6 +13,7 @@ from pycardano.serialization import ByteString
 from models import (
     HTTP_METHODS,
     HTTPAction,
+    HTTPActionWithProof,
     HTTPRequest,
     UnencryptedHTTPPrivatePatch,
 )
@@ -103,25 +104,46 @@ def main():
 
     client = SignerClient(args.oracle_url)
     public_key = client.public_key()
+    public_key_vk = VerifyingKey.from_string(public_key.to_bytes(), SECP256k1)
+
+    ephemeral_priv_key = SigningKey.generate(curve=SECP256k1)
 
     action = HTTPAction(
         request=request,
-        patch=patch.encrypt(encrypt_func=lambda x: encrypt(x, public_key)),
+        patch=patch.encrypt(
+            encrypt_func=lambda x: encrypt(x, public_key_vk, ephemeral_priv_key)
+        ),
         filter=ByteString(args.filter.encode()),
         schema=ByteString(args.schema.encode()),
     )
-    response = client.query(action)
+
+    proof = encrypt(
+        action.action_id(),
+        public_key_vk,
+        ephemeral_priv_key,
+        include_ephemeral_public_key=True,
+    )
+
+    action_with_proof = HTTPActionWithProof(
+        action=action,
+        proof=ByteString(proof),
+    )
+
+    wallet = OraclePoolOwnerWallet.from_env(args.passphrase)
+
+    relayer = bytes(wallet.treasury.vk.hash())
+    response = client.query(action_with_proof, relayer)
 
     print("Oracle Response:")
     print("  Action ID:", response.message.action_id.hex())
     print("  Timestamp:", response.message.data.format_timestamp())
     print("  Error:    ", response.message.data.error)
     print("  Value:    ", response.message.data.format_value())
+    print("  Relayer:  ", response.message.relayer.value.hex())
 
     print("Oracle Info:")
     print("  Public key:", public_key.to_compressed_bytes().hex())
 
-    wallet = OraclePoolOwnerWallet.from_env(args.passphrase)
     context = get_chain_context()
     protocol = Protocol.load(args.plutus_blueprint)
     oracle_repo = OracleRepository(wallet=wallet, context=context, protocol=protocol)
@@ -154,19 +176,20 @@ def main():
     )
 
 
-def encrypt(message: bytes, recipient_pub_key: keys.PublicKey) -> bytes:
-    ephemeral_private_key = SigningKey.generate(curve=SECP256k1)
-    ephemeral_public_key = ephemeral_private_key.get_verifying_key().to_string()
+def encrypt(
+    message: bytes,
+    recipient_pub_key: VerifyingKey,
+    priv_key: SigningKey,
+    include_ephemeral_public_key=False,
+) -> bytes:
+    pub_key = priv_key.get_verifying_key()
 
     # Calculate the shared secret point using ECDH
-    recipient_vk = VerifyingKey.from_string(recipient_pub_key.to_bytes(), SECP256k1)
-    shared_point = (
-        recipient_vk.pubkey.point * ephemeral_private_key.privkey.secret_multiplier
-    )
+    shared_point = recipient_pub_key.pubkey.point * priv_key.privkey.secret_multiplier
     shared_key = shared_point.to_bytes()
 
     # Derive the symmetric key using HKDF with SHA-256
-    hkdf_input = b"\x04" + ephemeral_public_key + b"\x04" + shared_key
+    hkdf_input = b"\x04" + pub_key.to_string() + b"\x04" + shared_key
     symm_key = HKDF(hkdf_input, 32, salt=None, hashmod=SHA256)
 
     # Encrypt the message using AES-GCM
@@ -174,7 +197,10 @@ def encrypt(message: bytes, recipient_pub_key: keys.PublicKey) -> bytes:
     cipher = AES.new(symm_key, AES.MODE_GCM, nonce=nonce)
     ciphertext, tag = cipher.encrypt_and_digest(message)
 
-    return ephemeral_public_key + nonce + tag + ciphertext
+    if include_ephemeral_public_key:
+        return pub_key.to_string() + nonce + tag + ciphertext
+    else:
+        return nonce + tag + ciphertext
 
 
 if __name__ == "__main__":
