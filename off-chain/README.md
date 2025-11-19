@@ -28,7 +28,7 @@ deactivate
 
 + `WALLET_MNEMONIC`: mnemonic phrase for the oracle pool owner wallet. Can be generated with `./wallet generate --passphrase <passphrase>`.
 + `CARDANO_NETWORK`: Cardano blockchain to use. Can be `preview`, `preprod`, or `mainnet`. Default is `preview`.
-+ `BLOCKFROST_PROJECT`: blockfrost.io project ID to communicate with Cardano. If none, a local Ogmius V6 instance is assumed to be running.
++ `BLOCKFROST_PROJECT`: blockfrost.io project ID to communicate with Cardano. If none, a local Ogmios V6 instance is assumed to be running.
 + `ORACLE_URL`: base URL of a QUEX Signer API to be used by default.
 + `ORACLE_POOL_ID`: ID of the oracle pool in hex to be used by default.
 

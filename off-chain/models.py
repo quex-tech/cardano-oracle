@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2025 Quex Technologies
 from base64 import b64decode
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
+from copy import deepcopy
+from hashlib import sha256
 from time import gmtime, strftime
-from typing import List, Optional
-from urllib.parse import urlparse, parse_qsl
+from types import UnionType
+from typing import List, Optional, get_origin, get_args, Union
+from urllib.parse import urlparse, parse_qsl, urlencode
 
 from eth_utils import keccak
 from pycardano.serialization import ByteString, CBORTag, IndefiniteList
@@ -22,8 +25,47 @@ HTTP_METHODS = {
 }
 
 
+class FixedPlutusData(PlutusData):
+    def __post_init__(self):
+        super().__post_init__()
+
+        for f in fields(self):
+            ann = f.type
+
+            if not _is_indef_list(ann):
+                continue
+
+            value = getattr(self, f.name)
+
+            if (
+                isinstance(value, list)
+                and not isinstance(value, IndefiniteList)
+                and value
+            ):
+                setattr(self, f.name, IndefiniteList(value))
+
+
+def _is_indef_list(tp) -> bool:
+    if tp is IndefiniteList:
+        return True
+
+    origin = get_origin(tp)
+
+    if origin is IndefiniteList:
+        return True
+
+    if origin is Union or origin is UnionType:
+        for arg in get_args(tp):
+            if arg is IndefiniteList:
+                return True
+            if get_origin(arg) is IndefiniteList:
+                return True
+
+    return False
+
+
 @dataclass
-class RequestHeader(PlutusData):
+class RequestHeader(FixedPlutusData):
     CONSTR_ID = 0
     key: ByteString
     value: ByteString
@@ -38,21 +80,21 @@ class RequestHeader(PlutusData):
 
 
 @dataclass
-class QueryParameter(PlutusData):
+class QueryParameter(FixedPlutusData):
     CONSTR_ID = 0
     key: ByteString
     value: ByteString
 
 
 @dataclass
-class QueryParameterPatch(PlutusData):
+class QueryParameterPatch(FixedPlutusData):
     CONSTR_ID = 0
     key: ByteString
     ciphertext: ByteString
 
 
 @dataclass
-class RequestHeaderPatch(PlutusData):
+class RequestHeaderPatch(FixedPlutusData):
     CONSTR_ID = 0
     key: ByteString
     ciphertext: ByteString
@@ -105,15 +147,18 @@ class UnencryptedHTTPPrivatePatch:
             path_suffix=ByteString(
                 encrypt_func(self.path_suffix) if self.path_suffix else b""
             ),
-            headers=_to_plutus_list(headers),
-            parameters=_to_plutus_list(parameters),
+            headers=headers,
+            parameters=parameters,
             body=ByteString(encrypt_func(self.body) if self.body else b""),
             td_address=ByteString(self.td_address),
         )
 
+    def empty(self) -> bool:
+        return not (self.path_suffix or self.headers or self.parameters or self.body)
+
 
 @dataclass
-class HTTPPrivatePatch(PlutusData):
+class HTTPPrivatePatch(FixedPlutusData):
     CONSTR_ID = 0
     path_suffix: ByteString
     headers: IndefiniteList[RequestHeaderPatch] | List[RequestHeaderPatch]
@@ -123,7 +168,7 @@ class HTTPPrivatePatch(PlutusData):
 
 
 @dataclass
-class HTTPRequest(PlutusData):
+class HTTPRequest(FixedPlutusData):
     CONSTR_ID = 0
     method: RawPlutusData
     host: ByteString
@@ -149,18 +194,26 @@ class HTTPRequest(PlutusData):
             method=RawPlutusData.from_primitive(HTTP_METHODS[method]),
             host=ByteString(host),
             path=ByteString(path),
-            headers=_to_plutus_list(parsed_headers),
-            parameters=_to_plutus_list(parameters),
+            headers=parsed_headers,
+            parameters=parameters,
             body=ByteString(body.encode() if body else b""),
         )
 
+    def format_url(self):
+        base_url = f"https://{self.host.value.decode()}{self.path.value.decode()}"
 
-def _to_plutus_list(items):
-    return IndefiniteList(items) if items else []
+        query_items = [
+            (param.key.value.decode(), param.value.value.decode())
+            for param in self.parameters
+        ]
+        if not query_items:
+            return base_url
+
+        return f"{base_url}?{urlencode(query_items)}"
 
 
 @dataclass
-class HTTPAction(PlutusData):
+class HTTPAction(FixedPlutusData):
     CONSTR_ID = 0
     request: HTTPRequest
     patch: HTTPPrivatePatch
@@ -172,14 +225,14 @@ class HTTPAction(PlutusData):
 
 
 @dataclass
-class HTTPActionWithProof(PlutusData):
+class HTTPActionWithProof(FixedPlutusData):
     CONSTR_ID = 0
     action: HTTPAction
     proof: ByteString
 
 
 @dataclass
-class DataItem(PlutusData):
+class DataItem(FixedPlutusData):
     CONSTR_ID = 0
     timestamp: int
     error: int
@@ -194,14 +247,14 @@ class DataItem(PlutusData):
         )
 
     def format_timestamp(self):
-        return strftime("%Y-%m-%dT%H:%M:%SZ", gmtime(self.timestamp))
+        return format_unixtime_seconds(self.timestamp)
 
     def format_value(self):
         return format_plutus_dict(self.value.to_dict())
 
 
 @dataclass
-class QuexMessage(PlutusData):
+class QuexMessage(FixedPlutusData):
     CONSTR_ID = 0
     action_id: bytes
     data: DataItem
@@ -223,7 +276,7 @@ def parse_eth_signature(value: dict) -> ByteString:
 
 
 @dataclass
-class QuexResponse(PlutusData):
+class QuexResponse(FixedPlutusData):
     CONSTR_ID = 0
     message: QuexMessage
     signature: ByteString
@@ -234,3 +287,52 @@ class QuexResponse(PlutusData):
             message=QuexMessage.parse(value["msg"]),
             signature=parse_eth_signature(value["sig"]),
         )
+
+
+@dataclass
+class AssetClass(FixedPlutusData):
+    CONSTR_ID = 0
+    currency_symbol: ByteString
+    token_name: ByteString
+
+    def __bytes__(self):
+        return self.currency_symbol.value + self.token_name.value
+
+    def pool_action_id(self, action_id: bytes) -> bytes:
+        return sha256(bytes(self) + action_id).digest()
+
+    @classmethod
+    def from_bytes(cls, b: bytes):
+        return cls(currency_symbol=ByteString(b[:32]), token_name=ByteString(b[32:]))
+
+
+@dataclass
+class TimeRange(FixedPlutusData):
+    CONSTR_ID = 0
+    start: int
+    end: int
+
+    def format_start(self):
+        return format_unixtime_seconds(self.start)
+
+    def format_end(self):
+        return format_unixtime_seconds(self.end)
+
+
+@dataclass
+class OracleRequestParameters(FixedPlutusData):
+    CONSTR_ID = 0
+    pool_id: AssetClass
+    time_range: TimeRange
+    pub_key_hash: ByteString
+
+
+@dataclass
+class OracleRequest(FixedPlutusData):
+    CONSTR_ID = 0
+    action: HTTPActionWithProof
+    parameters: OracleRequestParameters
+
+
+def format_unixtime_seconds(sec):
+    return strftime("%Y-%m-%dT%H:%M:%SZ", gmtime(sec))

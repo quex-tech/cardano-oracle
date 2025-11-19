@@ -2,7 +2,8 @@
 # Copyright 2025 Quex Technologies
 from argparse import ArgumentParser, Namespace
 import json
-from typing import List
+from time import sleep
+from typing import List, Mapping
 
 from pycardano import ChainContext, PlutusScript, Transaction, TransactionInput
 
@@ -10,6 +11,7 @@ from pycardano import ChainContext, PlutusScript, Transaction, TransactionInput
 def handle_tx(signed_tx: Transaction, context: ChainContext, args: Namespace):
     show_tx = "view_tx" not in args or args.view_tx
     submit_tx = "submit" not in args or args.submit
+    wait_tx = "wait" not in args or args.wait
 
     if show_tx:
         print("Transaction:", signed_tx)
@@ -19,12 +21,32 @@ def handle_tx(signed_tx: Transaction, context: ChainContext, args: Namespace):
     if submit_tx:
         context.submit_tx(signed_tx)
         print("Transaction submitted.")
+
+        if wait_tx and signed_tx.transaction_body.outputs:
+            print("Waiting for confirmation...")
+            first_output = signed_tx.transaction_body.outputs[0]
+            utxo = None
+            while not utxo:
+                utxo = next(
+                    (
+                        u
+                        for u in context.utxos(first_output.address)
+                        if u.input.transaction_id == signed_tx.id
+                    ),
+                    None,
+                )
+                sleep(5)
+                print(".", end="", flush=True)
+            print()
+            print("Transaction confirmed.")
         return
+
+    context.utxos(signed_tx.transaction_body.outputs[0].address)
 
     print()
     if not show_tx:
         print("Add --view-tx to preview the transaction")
-    print("Add --submit to submit the transaction")
+    print("Add --submit to submit the transaction (add --wait to wait for transaction confirmation)")
 
 
 def parse_tx_input(tx_input: str):
@@ -32,16 +54,18 @@ def parse_tx_input(tx_input: str):
     return TransactionInput.from_primitive([tx, int(idx)])
 
 
-def load_scripts(path: str) -> List[PlutusScript]:
+def load_scripts(path: str) -> Mapping[str, PlutusScript]:
     with open(path, "r", encoding="utf-8") as f:
         blueprint = json.loads(f.read())
 
     version = int(blueprint["preamble"]["plutusVersion"].strip("v"))
 
-    return [
-        PlutusScript.from_version(version, bytes.fromhex(validator["compiledCode"]))
+    return {
+        validator["title"]: PlutusScript.from_version(
+            version, bytes.fromhex(validator["compiledCode"])
+        )
         for validator in blueprint["validators"]
-    ]
+    }
 
 
 tx_arg_parser = ArgumentParser(add_help=False)
@@ -52,6 +76,11 @@ tx_arg_parser.add_argument(
     "--submit",
     action="store_true",
     help="Submit the transaction on-chain",
+)
+tx_arg_parser.add_argument(
+    "--wait",
+    action="store_true",
+    help="Wait for the transaction confirmation",
 )
 
 passphrase_arg_parser = ArgumentParser(add_help=False)

@@ -16,6 +16,7 @@ library scripts
     ExampleUserValidator
     SingleOraclePoolValidator
     OracleResponseValidator
+    OracleRequestValidator
     Validator
 
   build-depends:

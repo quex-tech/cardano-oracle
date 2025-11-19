@@ -17,10 +17,12 @@ module Main where
 
 import Data.ByteString.Short qualified as Short
 import Data.Set qualified as Set
+import OracleRequestValidator
 import OracleResponseValidator
 import PlutusLedgerApi.Common (BuiltinByteString, serialiseCompiledCode)
-import PlutusLedgerApi.V1 (DiffMilliSeconds)
+import PlutusLedgerApi.V1 (CurrencySymbol (..), DiffMilliSeconds)
 import PlutusTx.Blueprint
+import PlutusTx.Builtins (toBuiltin)
 import SingleOraclePoolValidator (singleOraclePoolValidatorScript)
 import System.Environment (getArgs)
 
@@ -29,7 +31,7 @@ myContractBlueprint =
   MkContractBlueprint
     { contractId = Just "quex-oracle",
       contractPreamble = myPreamble,
-      contractValidators = Set.fromList [validator, singleOraclePoolValidator],
+      contractValidators = Set.fromList [responseValidator, requestValidator, singleOraclePoolValidator],
       contractDefinitions = deriveDefinitions @[ETHSignedMessage, (BuiltinByteString, DiffMilliSeconds)]
     }
 
@@ -43,8 +45,8 @@ myPreamble =
       preambleLicense = Nothing
     }
 
-validator :: ValidatorBlueprint referencedTypes
-validator =
+responseValidator :: ValidatorBlueprint referencedTypes
+responseValidator =
   MkValidatorBlueprint
     { validatorTitle = "Oracle Response Validator",
       validatorDescription = Nothing,
@@ -60,6 +62,50 @@ validator =
       validatorCompiled = do
         let code = Short.fromShort (serialiseCompiledCode oracleResponseValidatorScript)
         Just (compiledValidator PlutusV3 code)
+    }
+
+requestValidator :: ValidatorBlueprint referencedTypes
+requestValidator =
+  MkValidatorBlueprint
+    { validatorTitle = "Oracle Request Validator",
+      validatorDescription = Nothing,
+      validatorParameters =
+        [ MkParameterBlueprint
+            { parameterTitle = Just "Oracle Response currency symbol, that is, response validator script hash",
+              parameterDescription = Nothing,
+              parameterPurpose = Set.singleton Spend,
+              parameterSchema = definitionRef @CurrencySymbol
+            }
+        ],
+      validatorRedeemer =
+        MkArgumentBlueprint
+          { argumentTitle = Just "Redeemer for the request validator",
+            argumentDescription = Just "The validator does not use a redeemer, hence ()",
+            argumentPurpose = Set.singleton Spend,
+            argumentSchema = definitionRef @()
+          },
+      validatorDatum =
+        Just
+          MkArgumentBlueprint
+            { argumentTitle = Just "Datum for the request validator",
+              argumentDescription = Nothing,
+              argumentPurpose = Set.singleton Spend,
+              argumentSchema = definitionRef @OracleRequest
+            },
+      validatorCompiled = do
+        let responseCode =
+              Short.fromShort (serialiseCompiledCode oracleResponseValidatorScript)
+            responseCompiled =
+              compiledValidator PlutusV3 responseCode
+            responseHashBS =
+              compiledValidatorHash responseCompiled
+            responseCurrencySymbol :: CurrencySymbol
+            responseCurrencySymbol =
+              CurrencySymbol (toBuiltin responseHashBS)
+            requestCode =
+              Short.fromShort
+                (serialiseCompiledCode (oracleRequestValidatorScript responseCurrencySymbol))
+        Just (compiledValidator PlutusV3 requestCode)
     }
 
 singleOraclePoolValidator :: ValidatorBlueprint referencedTypes

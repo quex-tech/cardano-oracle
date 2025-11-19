@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from ecdsa import SECP256k1, SigningKey, VerifyingKey
 from pycardano.serialization import ByteString
 
+from http_action import http_action_arg_parser, parse_http_action_with_proof
 from models import (
     HTTP_METHODS,
     HTTPAction,
@@ -35,46 +36,13 @@ from wallet import OraclePoolOwnerWallet
 def main():
     load_dotenv()
     parser = argparse.ArgumentParser(
-        parents=[tx_arg_parser, passphrase_arg_parser, blueprint_arg_parser],
+        parents=[
+            tx_arg_parser,
+            passphrase_arg_parser,
+            blueprint_arg_parser,
+            http_action_arg_parser,
+        ],
         description="Initiates HTTPS requests and posts responses on-chain",
-    )
-    parser.add_argument(
-        "-X",
-        "--request",
-        help="HTTP method",
-        choices=list(HTTP_METHODS.keys()),
-        default="GET",
-    )
-    parser.add_argument(
-        "--enc-url-suffix",
-        help=(
-            "URL suffix to append and send encrypted. "
-            "Examples: /mysecretpath, ?secret1=123&secret2=321, /mypath?secret=321"
-        ),
-    )
-    parser.add_argument(
-        "-H",
-        "--header",
-        action="append",
-        help='add an HTTP header. Example: --header "Content-Type: application/json"',
-    )
-    parser.add_argument(
-        "--enc-header",
-        action="append",
-        help='add an HTTP header to send encrypted. Example: --enc-header "Api-Key: abcdef123"',
-    )
-    parser.add_argument("-d", "--data", help="HTTP body as plaintext")
-    parser.add_argument(
-        "--enc-data", help="HTTP body as plaintext to send encrypted. Overrides --data"
-    )
-    parser.add_argument(
-        "--td-address", default="0x0000000000000000000000000000000000000000"
-    )
-    parser.add_argument(
-        "-f",
-        "--filter",
-        default=".",
-        help="jq filter to transfort response body. Default: .",
     )
     parser.add_argument(
         "--oracle-url",
@@ -88,47 +56,16 @@ def main():
         type=bytes.fromhex,
         help="ID of the oracle pool in hex",
     )
-    parser.add_argument("url", help="URL to fetch")
-    parser.add_argument(
-        "schema", help="Schema to encode response body, example: (string,(int,bool[]))"
-    )
     args = parser.parse_args()
     request = HTTPRequest.from_parts(
         method=args.request, url=args.url, headers=args.header, body=args.data
-    )
-    patch = UnencryptedHTTPPrivatePatch.from_parts(
-        url_suffix=args.enc_url_suffix,
-        headers=args.enc_header,
-        body=args.enc_data,
-        td_address=args.td_address,
     )
 
     client = SignerClient(args.oracle_url)
     public_key = client.public_key()
     public_key_vk = VerifyingKey.from_string(public_key.to_bytes(), SECP256k1)
 
-    ephemeral_priv_key = SigningKey.generate(curve=SECP256k1)
-
-    action = HTTPAction(
-        request=request,
-        patch=patch.encrypt(
-            encrypt_func=lambda x: encrypt(x, public_key_vk, ephemeral_priv_key)
-        ),
-        filter=ByteString(args.filter.encode()),
-        schema=ByteString(args.schema.encode()),
-    )
-
-    proof = encrypt(
-        action.action_id(),
-        public_key_vk,
-        ephemeral_priv_key,
-        include_ephemeral_public_key=True,
-    )
-
-    action_with_proof = HTTPActionWithProof(
-        action=action,
-        proof=ByteString(proof),
-    )
+    action_with_proof = parse_http_action_with_proof(args, public_key_vk)
 
     wallet = OraclePoolOwnerWallet.from_env(args.passphrase)
 
@@ -175,33 +112,6 @@ def main():
     handle_tx(
         signed_tx=response_repo.add_tx(response, oracle), context=context, args=args
     )
-
-
-def encrypt(
-    message: bytes,
-    recipient_pub_key: VerifyingKey,
-    priv_key: SigningKey,
-    include_ephemeral_public_key=False,
-) -> bytes:
-    pub_key = priv_key.get_verifying_key()
-
-    # Calculate the shared secret point using ECDH
-    shared_point = recipient_pub_key.pubkey.point * priv_key.privkey.secret_multiplier
-    shared_key = shared_point.to_bytes()
-
-    # Derive the symmetric key using HKDF with SHA-256
-    hkdf_input = b"\x04" + pub_key.to_string() + b"\x04" + shared_key
-    symm_key = HKDF(hkdf_input, 32, salt=None, hashmod=SHA256)
-
-    # Encrypt the message using AES-GCM
-    nonce = os.urandom(16)
-    cipher = AES.new(symm_key, AES.MODE_GCM, nonce=nonce)
-    ciphertext, tag = cipher.encrypt_and_digest(message)
-
-    if include_ephemeral_public_key:
-        return pub_key.to_string() + nonce + tag + ciphertext
-    else:
-        return nonce + tag + ciphertext
 
 
 if __name__ == "__main__":

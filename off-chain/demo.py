@@ -25,7 +25,7 @@ from utils import handle_tx, load_scripts, passphrase_arg_parser, tx_arg_parser
 
 TX_TTL_OFFSET = timedelta(minutes=10)
 RESPONSE_VALIDITY_PERIOD = timedelta(minutes=30)
-
+VALIDATOR_TITLE = "Oracle Response Example User Spending Validator"
 
 def main():
     load_dotenv()
@@ -66,7 +66,7 @@ def main():
 
 
 def show(context: ChainContext, args):
-    (user_script,) = load_scripts(args.user_plutus_blueprint)
+    user_script = load_scripts(args.user_plutus_blueprint)[VALIDATOR_TITLE]
     currency_symbol, pool_action_id = load_asset_class(args.user_plutus_blueprint)
     addr = Address(plutus_script_hash(user_script), network=context.network)
     print("Contract address:                 ", addr)
@@ -78,7 +78,7 @@ def show(context: ChainContext, args):
 
 def lock(context: ChainContext, args):
     wallet = OraclePoolOwnerWallet.from_env(args.passphrase)
-    (user_script,) = load_scripts(args.user_plutus_blueprint)
+    user_script = load_scripts(args.user_plutus_blueprint)[VALIDATOR_TITLE]
 
     from_addr = wallet.treasury.addr(context.network)
     to_addr = Address(plutus_script_hash(user_script), network=context.network)
@@ -92,7 +92,7 @@ def lock(context: ChainContext, args):
 
 def spend(context: ChainContext, args):
     wallet = OraclePoolOwnerWallet.from_env(args.passphrase)
-    (user_script,) = load_scripts(args.user_plutus_blueprint)
+    user_script = load_scripts(args.user_plutus_blueprint)[VALIDATOR_TITLE]
     currency_symbol, pool_action_id = load_asset_class(args.user_plutus_blueprint)
     from_addr = Address(plutus_script_hash(user_script), network=context.network)
 

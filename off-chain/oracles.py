@@ -334,6 +334,7 @@ def delete_oracle(
 
     if not signed_tx:
         print("Oracle is not registered in the private pool")
+        return
 
     handle_tx(signed_tx, context, args)
 
