@@ -27,6 +27,7 @@ from pycardano import (
     TransactionBuilder,
     TransactionOutput,
     Value,
+    min_lovelace_post_alonzo,
 )
 
 from networks import get_chain_context
@@ -194,13 +195,13 @@ class OracleRepository:
         builder.native_scripts = [policy]
 
         builder.mint = pool.assets
-        builder.add_output(
-            TransactionOutput(
-                self.wallet.oracles.addr(nw),
-                Value(2_000_000, pool.assets),
-                datum=oracle.to_plutus_data(),
-            )
+        tx_out = TransactionOutput(
+            self.wallet.oracles.addr(nw),
+            Value(2_000_000, pool.assets),
+            datum=oracle.to_plutus_data(),
         )
+        tx_out.amount.coin = min_lovelace_post_alonzo(tx_out, self.context)
+        builder.add_output(tx_out)
 
         return builder.build_and_sign(
             [self.wallet.treasury.sk],
@@ -222,13 +223,13 @@ class OracleRepository:
             self.protocol.single_oracle_pool_validator,
             redeemer=Redeemer(data=plutus_oracle),
         )
-        builder.add_output(
-            TransactionOutput(
-                self.protocol.single_oracle_pool_addr(nw),
-                Value(2_000_000, pool.assets),
-                datum=plutus_oracle,
-            )
+        tx_out = TransactionOutput(
+            self.protocol.single_oracle_pool_addr(nw),
+            Value(2_000_000, pool.assets),
+            datum=plutus_oracle,
         )
+        tx_out.amount.coin = min_lovelace_post_alonzo(tx_out, self.context)
+        builder.add_output(tx_out)
 
         return builder.build_and_sign(
             [self.wallet.treasury.sk],

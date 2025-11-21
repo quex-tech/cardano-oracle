@@ -14,6 +14,7 @@ from pycardano import (
     TransactionOutput,
     UTxO,
     Value,
+    min_lovelace_post_alonzo,
 )
 from dotenv import load_dotenv
 
@@ -111,13 +112,13 @@ class ResponseTransactionBuilder:
                 redeemer=Redeemer(data=response),
             )
 
-        self.builder.add_output(
-            TransactionOutput(
-                self.protocol.response_addr(nw),
-                Value(2_000_000, assets),
-                datum=response.message.data,
-            )
+        tx_out = TransactionOutput(
+            self.protocol.response_addr(nw),
+            Value(2_000_000, assets),
+            datum=response.message.data,
         )
+        tx_out.amount.coin = min_lovelace_post_alonzo(tx_out, self.context)
+        self.builder.add_output(tx_out)
 
 
 @dataclass

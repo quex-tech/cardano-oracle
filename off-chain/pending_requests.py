@@ -20,6 +20,7 @@ from pycardano import (
     Unit,
     UTxO,
     Value,
+    min_lovelace_post_alonzo,
 )
 from pycardano.serialization import ByteString, default_encoder
 
@@ -192,13 +193,13 @@ class RequestRepository:
 
         request = OracleRequest(action, params)
 
-        builder.add_output(
-            TransactionOutput(
-                self.protocol.request_addr(nw),
-                Value(3_000_000),
-                datum=request,
-            )
+        tx_out = TransactionOutput(
+            self.protocol.request_addr(nw),
+            Value(2_000_000),
+            datum=request,
         )
+        tx_out.amount.coin = min_lovelace_post_alonzo(tx_out, self.context)
+        builder.add_output(tx_out)
 
         return builder.build_and_sign(
             [self.wallet.treasury.sk],
