@@ -26,7 +26,7 @@ deactivate
 
 ## Environment Variables
 
-+ `WALLET_MNEMONIC`: mnemonic phrase for the oracle pool owner wallet. Can be generated with `./wallet generate --passphrase <passphrase>`.
++ `WALLET_MNEMONIC`: mnemonic phrase for a wallet. Can be generated with `./wallet generate --passphrase <passphrase>`.
 + `CARDANO_NETWORK`: Cardano blockchain to use. Can be `preview`, `preprod`, or `mainnet`. Default is `preview`.
 + `BLOCKFROST_PROJECT`: blockfrost.io project ID to communicate with Cardano. If none, a local Ogmios V6 instance is assumed to be running.
 + `ORACLE_URL`: base URL of a QUEX Signer API to be used by default.
@@ -54,7 +54,7 @@ Prints `WALLET_MNEMONIC` value. Put it into the `.env` file or set the environme
 
 Passphrase is optional. If speficied, you have to remember it and provide to the other scripts with the `--passhprase` option.
 
-Also shows oracle pool owner addresses. Top up the treasury address.
+Also shows the addresses. Top up the treasury address.
 
 You can print these addresses again with:
 
@@ -187,7 +187,7 @@ Lock funds at the contract address:
 ./demo.py lock <ada amount> --submit
 ```
 
-The funds will be transferred from the oracle pool owner treasury.
+The funds will be transferred from the treasury.
 
 Once the transaction gets confirmed, you can view the locked funds along with other demo contract info:
 

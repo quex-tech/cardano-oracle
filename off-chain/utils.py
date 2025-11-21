@@ -10,7 +10,7 @@ from pycardano import ChainContext, PlutusScript, Transaction, TransactionInput
 
 def handle_tx(signed_tx: Transaction, context: ChainContext, args: Namespace):
     show_tx = "view_tx" not in args or args.view_tx
-    submit_tx = "submit" not in args or args.submit
+    submit_tx = "submit" in args and args.submit
     wait_tx = "wait" not in args or args.wait
 
     if show_tx:
@@ -46,7 +46,9 @@ def handle_tx(signed_tx: Transaction, context: ChainContext, args: Namespace):
     print()
     if not show_tx:
         print("Add --view-tx to preview the transaction")
-    print("Add --submit to submit the transaction (add --wait to wait for transaction confirmation)")
+    print(
+        "Add --submit to submit the transaction (add --wait to wait for transaction confirmation)"
+    )
 
 
 def parse_tx_input(tx_input: str):
@@ -85,7 +87,7 @@ tx_arg_parser.add_argument(
 
 passphrase_arg_parser = ArgumentParser(add_help=False)
 passphrase_arg_parser.add_argument(
-    "--passphrase", help="Passphrase for oracle pool owner wallet", default=""
+    "--passphrase", help="Passphrase for the wallet", default=""
 )
 
 blueprint_arg_parser = ArgumentParser(add_help=False)

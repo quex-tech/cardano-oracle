@@ -36,6 +36,7 @@ from networks import get_chain_context
 from oracles import OracleRepository
 from protocol import Protocol
 from responses import ResponseRepository, ResponseTransactionBuilder
+from scripts import try_refer_to_script
 from signer_client import SignerClient
 from utils import (
     blueprint_arg_parser,
@@ -44,7 +45,7 @@ from utils import (
     tx_arg_parser,
     parse_tx_input,
 )
-from wallet import OraclePoolOwnerWallet
+from wallet import OperatorWallet
 
 
 def main():
@@ -127,7 +128,7 @@ def main():
     args = parser.parse_args()
     args.func(
         get_chain_context(),
-        OraclePoolOwnerWallet.from_env(args.passphrase),
+        OperatorWallet.from_env(args.passphrase),
         Protocol.load(args.plutus_blueprint),
         args,
     )
@@ -148,7 +149,7 @@ class StoredRequest:
 
 @dataclass
 class RequestRepository:
-    wallet: OraclePoolOwnerWallet
+    wallet: OperatorWallet
     context: ChainContext
     protocol: Protocol
 
@@ -224,7 +225,9 @@ class RequestRepository:
         builder = TransactionBuilder(self.context)
         builder.add_input_address(self.wallet.treasury.addr(nw))
         builder.add_script_input(
-            utxo, self.protocol.request_validator, redeemer=Redeemer(data=Unit())
+            utxo,
+            try_refer_to_script(self.context, self.wallet, self.protocol.request_validator),
+            redeemer=Redeemer(data=Unit()),
         )
         builder.add_output(
             TransactionOutput(
@@ -241,7 +244,7 @@ class RequestRepository:
 
 def list_requests(
     context: ChainContext,
-    wallet: OraclePoolOwnerWallet,
+    wallet: OperatorWallet,
     protocol: Protocol,
     args: Namespace,
 ):
@@ -277,7 +280,7 @@ def list_requests(
 
 def add_request(
     context: ChainContext,
-    wallet: OraclePoolOwnerWallet,
+    wallet: OperatorWallet,
     protocol: Protocol,
     args: Namespace,
 ):
@@ -299,7 +302,7 @@ def add_request(
 
 def recycle_request(
     context: ChainContext,
-    wallet: OraclePoolOwnerWallet,
+    wallet: OperatorWallet,
     protocol: Protocol,
     args: Namespace,
 ):
@@ -314,7 +317,7 @@ def recycle_request(
 
 def fulfill_request(
     context: ChainContext,
-    wallet: OraclePoolOwnerWallet,
+    wallet: OperatorWallet,
     protocol: Protocol,
     args: Namespace,
 ):
@@ -365,7 +368,9 @@ def fulfill_request(
     builder.reference_inputs.add(oracle.input)
 
     builder.add_script_input(
-        request.utxo, protocol.request_validator, redeemer=Redeemer(data=Unit())
+        request.utxo,
+        try_refer_to_script(context, wallet, protocol.request_validator),
+        redeemer=Redeemer(data=Unit()),
     )
 
     builder.add_output(

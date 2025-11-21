@@ -23,7 +23,7 @@ from networks import get_chain_context
 from oracles import RegisteredOracle
 from protocol import Protocol
 from utils import passphrase_arg_parser, blueprint_arg_parser
-from wallet import OraclePoolOwnerWallet
+from wallet import OperatorWallet
 
 
 def main():
@@ -35,7 +35,7 @@ def main():
     args = parser.parse_args()
 
     repo = ResponseRepository(
-        wallet=OraclePoolOwnerWallet.from_env(args.passphrase),
+        wallet=OperatorWallet.from_env(args.passphrase),
         context=get_chain_context(),
         protocol=Protocol.load(args.plutus_blueprint),
     )
@@ -123,7 +123,7 @@ class ResponseTransactionBuilder:
 
 @dataclass
 class ResponseRepository:
-    wallet: OraclePoolOwnerWallet
+    wallet: OperatorWallet
     context: ChainContext
     protocol: Protocol
 

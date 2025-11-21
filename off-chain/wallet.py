@@ -21,13 +21,13 @@ from utils import passphrase_arg_parser
 def main():
     load_dotenv()
     parser = argparse.ArgumentParser(
-        description="Generates oracle pool owner wallets and displays addresses",
+        description="Generates wallets and displays addresses",
     )
     subparsers = parser.add_subparsers(required=True)
     parser_generate = subparsers.add_parser(
         "generate",
         help="Generate a new wallet",
-        description="Generates a new oracle pool owner wallet",
+        description="Generates a new wallet",
         parents=[passphrase_arg_parser],
     )
     parser_generate.set_defaults(func=generate)
@@ -50,7 +50,7 @@ def main():
 
 def generate(args):
     mnemonic = HDWallet.generate_mnemonic()
-    wallet = OraclePoolOwnerWallet(
+    wallet = OperatorWallet(
         HDWallet.from_mnemonic(mnemonic=mnemonic, passphrase=args.passphrase)
     )
     print(f'WALLET_MNEMONIC="{mnemonic}"')
@@ -58,7 +58,7 @@ def generate(args):
 
 
 def show(args):
-    wallet = OraclePoolOwnerWallet.from_env(args.passphrase)
+    wallet = OperatorWallet.from_env(args.passphrase)
     if not wallet:
         print("No wallet in WALLET_MNEMONIC environment variables")
         return
@@ -89,7 +89,7 @@ class Wallet:
 
 
 @dataclass
-class OraclePoolOwnerWallet(Wallet):
+class OperatorWallet(Wallet):
     @property
     def treasury(self) -> Wallet:
         return Wallet(self.wallet.derive(0))
@@ -98,8 +98,12 @@ class OraclePoolOwnerWallet(Wallet):
     def oracles(self) -> Wallet:
         return Wallet(self.wallet.derive(1))
 
+    @property
+    def library(self) -> Wallet:
+        return Wallet(self.wallet.derive(2))
 
-def print_wallet(wallet: OraclePoolOwnerWallet):
+
+def print_wallet(wallet: OperatorWallet):
     print("Verification key:", wallet.vk.hash())
     nw = get_network()
     print("Treasury address:", wallet.treasury.addr(nw))

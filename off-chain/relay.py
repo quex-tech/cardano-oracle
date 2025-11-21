@@ -30,7 +30,7 @@ from utils import (
     passphrase_arg_parser,
     blueprint_arg_parser,
 )
-from wallet import OraclePoolOwnerWallet
+from wallet import OperatorWallet
 
 
 def main():
@@ -67,7 +67,7 @@ def main():
 
     action_with_proof = parse_http_action_with_proof(args, public_key_vk)
 
-    wallet = OraclePoolOwnerWallet.from_env(args.passphrase)
+    wallet = OperatorWallet.from_env(args.passphrase)
 
     relayer = bytes(wallet.treasury.vk.hash())
     response = client.query(action_with_proof, relayer)

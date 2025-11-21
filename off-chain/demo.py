@@ -20,7 +20,7 @@ from pycardano import (
 
 from networks import get_chain_context
 from responses import StoredResponse
-from wallet import OraclePoolOwnerWallet
+from wallet import OperatorWallet
 from utils import handle_tx, load_scripts, passphrase_arg_parser, tx_arg_parser
 
 TX_TTL_OFFSET = timedelta(minutes=10)
@@ -77,7 +77,7 @@ def show(context: ChainContext, args):
 
 
 def lock(context: ChainContext, args):
-    wallet = OraclePoolOwnerWallet.from_env(args.passphrase)
+    wallet = OperatorWallet.from_env(args.passphrase)
     user_script = load_scripts(args.user_plutus_blueprint)[VALIDATOR_TITLE]
 
     from_addr = wallet.treasury.addr(context.network)
@@ -91,7 +91,7 @@ def lock(context: ChainContext, args):
 
 
 def spend(context: ChainContext, args):
-    wallet = OraclePoolOwnerWallet.from_env(args.passphrase)
+    wallet = OperatorWallet.from_env(args.passphrase)
     user_script = load_scripts(args.user_plutus_blueprint)[VALIDATOR_TITLE]
     currency_symbol, pool_action_id = load_asset_class(args.user_plutus_blueprint)
     from_addr = Address(plutus_script_hash(user_script), network=context.network)

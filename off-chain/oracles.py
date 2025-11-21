@@ -40,7 +40,7 @@ from utils import (
     passphrase_arg_parser,
     tx_arg_parser,
 )
-from wallet import OraclePoolOwnerWallet
+from wallet import OperatorWallet
 
 
 def main():
@@ -101,7 +101,7 @@ def main():
 
     context = get_chain_context()
     repo = OracleRepository(
-        wallet=OraclePoolOwnerWallet.from_env(args.passphrase),
+        wallet=OperatorWallet.from_env(args.passphrase),
         context=context,
         protocol=Protocol.load(args.plutus_blueprint),
     )
@@ -181,7 +181,7 @@ class RegisteredOracle:
 
 @dataclass
 class OracleRepository:
-    wallet: OraclePoolOwnerWallet
+    wallet: OperatorWallet
     context: ChainContext
     protocol: Protocol
 
