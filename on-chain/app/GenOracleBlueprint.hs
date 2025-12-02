@@ -12,13 +12,14 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Main where
 
 import Data.ByteString.Short qualified as Short
 import Data.Set qualified as Set
-import OracleRequestValidator
-import OracleResponseValidator
+import OracleRequestValidator (OracleRequest, oracleRequestValidatorScript)
+import OracleResponseValidator (ETHSignedMessage, oracleResponseValidatorScript)
 import PlutusLedgerApi.Common (BuiltinByteString, serialiseCompiledCode)
 import PlutusLedgerApi.V1 (CurrencySymbol (..), DiffMilliSeconds)
 import PlutusTx.Blueprint
@@ -32,7 +33,7 @@ myContractBlueprint =
     { contractId = Just "quex-oracle",
       contractPreamble = myPreamble,
       contractValidators = Set.fromList [responseValidator, requestValidator, singleOraclePoolValidator],
-      contractDefinitions = deriveDefinitions @[ETHSignedMessage, (BuiltinByteString, DiffMilliSeconds)]
+      contractDefinitions = deriveDefinitions @[ETHSignedMessage, (BuiltinByteString, DiffMilliSeconds), OracleRequest, ()]
     }
 
 myPreamble :: Preamble
@@ -71,7 +72,7 @@ requestValidator =
       validatorDescription = Nothing,
       validatorParameters =
         [ MkParameterBlueprint
-            { parameterTitle = Just "Oracle Response currency symbol, that is, response validator script hash",
+            { parameterTitle = Just "Oracle Request Validator Parameters",
               parameterDescription = Nothing,
               parameterPurpose = Set.singleton Spend,
               parameterSchema = definitionRef @CurrencySymbol

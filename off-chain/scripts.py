@@ -44,6 +44,13 @@ def main():
         parents=[passphrase_arg_parser, blueprint_arg_parser, tx_arg_parser],
     )
     parser_add_all.set_defaults(func=add_all_scripts)
+    parser_clear = subparsers.add_parser(
+        "clear",
+        help="Remove all oracle scripts from on-chain library",
+        description="Removes all oracle oracle scripts from on-chain library",
+        parents=[passphrase_arg_parser, blueprint_arg_parser, tx_arg_parser],
+    )
+    parser_clear.set_defaults(func=clear_scripts)
 
     args = parser.parse_args()
 
@@ -112,6 +119,30 @@ class ScriptRepository:
             change_address=self.wallet.treasury.addr(nw),
         )
 
+    def clear_tx(self):
+        nw = self.context.network
+
+        builder = TransactionBuilder(self.context)
+        builder.add_input_address(self.wallet.treasury.addr(nw))
+
+        val = Value()
+
+        scripts = self.all()
+        if not scripts:
+            return None
+
+        for script in scripts:
+            builder.add_input(script)
+            val += script.output.amount
+
+        builder.add_output(TransactionOutput(self.wallet.treasury.addr(nw), amount=val))
+
+        return builder.build_and_sign(
+            [self.wallet.treasury.sk, self.wallet.library.sk],
+            change_address=self.wallet.treasury.addr(nw),
+            merge_change=True,
+        )
+
 
 def list_scripts(context: ChainContext, repo: ScriptRepository, args: Namespace):
     for utxo in repo.all():
@@ -131,6 +162,16 @@ def add_all_scripts(context: ChainContext, repo: ScriptRepository, args: Namespa
 
     if not tx:
         print("All scripts are already added")
+        return
+
+    handle_tx(tx, context, args)
+
+
+def clear_scripts(context: ChainContext, repo: ScriptRepository, args: Namespace):
+    tx = repo.clear_tx()
+
+    if not tx:
+        print("No scripts on-chain")
         return
 
     handle_tx(tx, context, args)

@@ -290,49 +290,25 @@ class QuexResponse(FixedPlutusData):
 
 
 @dataclass
-class AssetClass(FixedPlutusData):
-    CONSTR_ID = 0
-    currency_symbol: ByteString
-    token_name: ByteString
-
-    def __bytes__(self):
-        return self.currency_symbol.value + self.token_name.value
-
-    def pool_action_id(self, action_id: bytes) -> bytes:
-        return sha256(bytes(self) + action_id).digest()
-
-    @classmethod
-    def from_bytes(cls, b: bytes):
-        return cls(currency_symbol=ByteString(b[:32]), token_name=ByteString(b[32:]))
-
-
-@dataclass
-class TimeRange(FixedPlutusData):
-    CONSTR_ID = 0
-    start: int
-    end: int
-
-    def format_start(self):
-        return format_unixtime_seconds(self.start)
-
-    def format_end(self):
-        return format_unixtime_seconds(self.end)
-
-
-@dataclass
-class OracleRequestParameters(FixedPlutusData):
-    CONSTR_ID = 0
-    pool_id: AssetClass
-    time_range: TimeRange
-    pub_key_hash: ByteString
-
-
-@dataclass
 class OracleRequest(FixedPlutusData):
     CONSTR_ID = 0
     action: HTTPActionWithProof
-    parameters: OracleRequestParameters
+    pool_id: ByteString
+    pool_action_id: ByteString
+    after: int
+    before: int
+    owner_pkh: ByteString
+    base_fee: int
+    fee_per_response_byte: int
+    max_fee: int
+
+    def format_after(self):
+        return format_unixtime_seconds(self.after)
+
+    def format_before(self):
+        return format_unixtime_seconds(self.before)
 
 
 def format_unixtime_seconds(sec):
     return strftime("%Y-%m-%dT%H:%M:%SZ", gmtime(sec))
+    

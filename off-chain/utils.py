@@ -26,6 +26,7 @@ def handle_tx(signed_tx: Transaction, context: ChainContext, args: Namespace):
             print("Waiting for confirmation...")
             first_output = signed_tx.transaction_body.outputs[0]
             utxo = None
+            tick = 0
             while not utxo:
                 utxo = next(
                     (
@@ -36,7 +37,11 @@ def handle_tx(signed_tx: Transaction, context: ChainContext, args: Namespace):
                     None,
                 )
                 sleep(5)
-                print(".", end="", flush=True)
+                tick += 1
+                dots = tick % 6
+                if dots != 1:
+                    print("\b", end="", flush=True)
+                print("⠿⠄⠤⠴⠶⠷"[dots], end="", flush=True)
             print()
             print("Transaction confirmed.")
         return

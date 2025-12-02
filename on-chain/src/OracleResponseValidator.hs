@@ -25,6 +25,7 @@
 {-# OPTIONS_GHC -fno-unbox-small-strict-fields #-}
 {-# OPTIONS_GHC -fno-unbox-strict-fields #-}
 {-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:target-version=1.1.0 #-}
+{-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:conservative-optimisation #-}
 
 module OracleResponseValidator (oracleResponseValidatorScript, ETHSignedMessage) where
 

@@ -102,12 +102,18 @@ class OperatorWallet(Wallet):
     def library(self) -> Wallet:
         return Wallet(self.wallet.derive(2))
 
+    @property
+    def request_treasury(self) -> Wallet:
+        return Wallet(self.wallet.derive(3))
+
 
 def print_wallet(wallet: OperatorWallet):
-    print("Verification key:", wallet.vk.hash())
+    print("Verification key:        ", wallet.vk.hash())
     nw = get_network()
-    print("Treasury address:", wallet.treasury.addr(nw))
-    print("Oracles address: ", wallet.oracles.addr(nw))
+    print("Treasury address:        ", wallet.treasury.addr(nw))
+    print("Oracles address:         ", wallet.oracles.addr(nw))
+    print("Library address:         ", wallet.library.addr(nw))
+    print("Request treasury address:", wallet.request_treasury.addr(nw))
 
 
 if __name__ == "__main__":

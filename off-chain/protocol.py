@@ -22,19 +22,21 @@ def main():
     protocol = Protocol.load(args.plutus_blueprint)
     nw = get_network()
     print(
-        "Network:                           ",
+        "Network:            ",
         os.environ.get("CARDANO_NETWORK", "preview"),
     )
-    print("Request address:                   ", protocol.request_addr(nw))
-    print("Response address:                  ", protocol.response_addr(nw))
+    print("Requests:")
+    print("  Address:          ", protocol.request_addr(nw))
+    print("  Script size:      ", len(protocol.request_validator))
+    print("Responses:")
+    print("  Address:          ", protocol.response_addr(nw))
+    print("  Script size:      ", len(protocol.response_validator))
+    print("  Currency symbol:  ", bytes(protocol.response_currency_symbol).hex())
+    print("Single-oracle pools:")
+    print("  Address:          ", protocol.single_oracle_pool_addr(nw))
+    print("  Script size:      ", len(protocol.single_oracle_pool_validator))
     print(
-        "Response currency symbol:          ",
-        bytes(protocol.response_currency_symbol).hex(),
-    )
-    print("Single-oracle pool address:        ", protocol.single_oracle_pool_addr(nw))
-    print(
-        "Single-oracle pool currency symbol:",
-        bytes(protocol.single_oracle_pool_currency_symbol).hex(),
+        "  Currency symbol:  ", bytes(protocol.single_oracle_pool_currency_symbol).hex()
     )
 
 
@@ -63,7 +65,6 @@ class Protocol:
         return Address(plutus_script_hash(self.response_validator), network=nw)
 
     def request_addr(self, nw: Network) -> Address:
-        #return Address.decode("addr_test1wpcwdcwq3effxth5xvzqmxqm0qg8ghvmj9p59j9a5tzfkfst3q7k9")
         return Address(plutus_script_hash(self.request_validator), network=nw)
 
     def single_oracle_pool_addr(self, nw: Network) -> Address:

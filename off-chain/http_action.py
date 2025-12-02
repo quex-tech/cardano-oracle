@@ -1,6 +1,6 @@
 from argparse import ArgumentParser, Namespace
 import os
-from typing import Optional
+from typing import List, Optional
 
 from Crypto.Cipher import AES
 from Crypto.Hash import SHA256
@@ -64,14 +64,39 @@ http_action_arg_parser.add_argument(
 def parse_http_action_with_proof(
     args: Namespace, td_vk: Optional[VerifyingKey]
 ) -> HTTPActionWithProof:
-    request = HTTPRequest.from_parts(
-        method=args.request, url=args.url, headers=args.header, body=args.data
+
+    return create_http_action_with_proof(
+        args.method,
+        args.url,
+        args.header,
+        args.data,
+        ards.enc_url_suffix,
+        args.enc_header,
+        args.enc_data,
+        td_vk,
+        args.filter,
+        args.schema,
     )
 
+
+def create_http_action_with_proof(
+    method: str,
+    url: str,
+    headers: List[str],
+    body: Optional[str],
+    enc_url_suffix: Optional[str],
+    enc_headers: List[str],
+    enc_body: Optional[str],
+    td_vk: Optional[VerifyingKey],
+    filter_: str,
+    schema: str,
+):
+    request = HTTPRequest.from_parts(method=method, url=url, headers=headers, body=body)
+
     patch = UnencryptedHTTPPrivatePatch.from_parts(
-        url_suffix=args.enc_url_suffix,
-        headers=args.enc_header,
-        body=args.enc_data,
+        url_suffix=enc_url_suffix,
+        headers=enc_headers,
+        body=enc_body,
         td_address=(
             str(keys.PublicKey(td_vk.to_string()).to_checksum_address())
             if td_vk
@@ -89,8 +114,8 @@ def parse_http_action_with_proof(
         patch=patch.encrypt(
             encrypt_func=lambda x: encrypt(x, td_vk, ephemeral_priv_key)
         ),
-        filter=ByteString(args.filter.encode()),
-        schema=ByteString(args.schema.encode()),
+        filter=ByteString(filter_.encode()),
+        schema=ByteString(schema.encode()),
     )
 
     proof = (
