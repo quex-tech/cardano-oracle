@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from argparse import ArgumentParser, Namespace
+from argparse import ArgumentParser
 
 from dotenv import load_dotenv
 from pycardano import Address, TransactionBuilder, TransactionOutput, Value
@@ -33,7 +33,9 @@ def main():
     builder = TransactionBuilder(context)
     builder.add_input_address(wallet.treasury.addr(nw))
 
-    builder.add_output(TransactionOutput(args.recipient, Value(int(args.ada * 1_000_000))))
+    builder.add_output(
+        TransactionOutput(args.recipient, Value(int(args.ada * 1_000_000)))
+    )
 
     signed_tx = builder.build_and_sign(
         [wallet.treasury.sk],

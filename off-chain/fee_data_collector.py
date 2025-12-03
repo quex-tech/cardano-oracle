@@ -6,10 +6,9 @@ from time import sleep
 
 from dotenv import load_dotenv
 from pycardano import ExecutionUnits, ChainContext, Transaction, TransactionInput, Unit
-from pycardano.serialization import ByteString
 
 from http_action import create_http_action_with_proof
-from models import HTTPAction, HTTPActionWithProof, HTTPRequest, QuexResponse
+from models import QuexResponse
 from networks import get_chain_context
 from pending_requests import (
     create_request,
@@ -69,7 +68,6 @@ def main():
             protocol,
             action,
             pool_id,
-            oracle_pub_key=None,
             max_response_size=128,
             ttl=timedelta(minutes=5),
         )
@@ -122,7 +120,7 @@ def main():
             )
         )
 
-        with open(f'{len(response.message.data.to_cbor())}_tx.bin', 'wb') as file:
+        with open(f"{len(response.message.data.to_cbor())}_tx.bin", "wb") as file:
             file.write(fulfill_tx.to_cbor())
 
         # context.submit_tx(fulfill_tx)

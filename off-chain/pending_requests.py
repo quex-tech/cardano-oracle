@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 from argparse import ArgumentParser, Namespace
-from base64 import b64encode
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
-from math import ceil, floor
+from math import ceil
 import os
 from typing import List, Optional
 
@@ -13,10 +12,7 @@ from ecdsa import SECP256k1, VerifyingKey
 from pycardano import (
     Address,
     ChainContext,
-    MultiAsset,
     Network,
-    PlutusData,
-    ProtocolParameters,
     Redeemer,
     Transaction,
     TransactionBuilder,
@@ -27,12 +23,15 @@ from pycardano import (
     Value,
     VerificationKeyHash,
     min_lovelace_post_alonzo,
-    fee,
 )
-from pycardano.serialization import ByteString, default_encoder
+from pycardano.serialization import ByteString
 
 from http_action import http_action_arg_parser, parse_http_action_with_proof
-from models import OracleRequest, HTTPActionWithProof, QuexResponse
+from models import (
+    OracleRequest,
+    HTTPActionWithProof,
+    QuexResponse,
+)
 from networks import get_chain_context
 from oracles import OracleRepository, RegisteredOracle
 from protocol import Protocol
@@ -48,7 +47,9 @@ from utils import (
 )
 from wallet import OperatorWallet
 
-RELAYER_FEE = 50_000
+CARDANO_FEE_BUFFER = 1_000_000
+RELAYER_REWARD = 50_000
+RESPONSE_DATUM_SIZE_INTERCEPT = 274
 
 
 def main():
@@ -224,7 +225,7 @@ class RequestRepository:
             self.protocol.request_addr(nw),
             Value(
                 max(
-                    min_lovelace_change_utxo + request.max_fee,
+                    min_lovelace_change_utxo + request.max_cost,
                     min_lovelace_request_utxo,
                 )
             ),
@@ -331,7 +332,6 @@ def list_requests(
 ):
     repo = RequestRepository(wallet=wallet, context=context, protocol=protocol)
     for request in repo.all():
-        action_id = request.request.action.action.action_id()
         print(
             f"- UTxO:              {request.utxo.input.transaction_id}#{request.utxo.input.index}"
         )
@@ -351,7 +351,6 @@ def run_add_request_command(
         protocol,
         parse_http_action_with_proof(args, args.oracle_pub_key),
         args.oracle_pool_id,
-        args.oracle_pub_key,
         args.max_response,
         args.ttl,
     )
@@ -374,7 +373,6 @@ def create_request(
     protocol: Protocol,
     action: HTTPActionWithProof,
     pool_id: bytes,
-    oracle_pub_key: Optional[bytes],
     max_response_size: int,
     ttl: timedelta,
 ) -> OracleRequest:
@@ -385,14 +383,15 @@ def create_request(
 
     after = datetime.now(timezone.utc)
 
-    fee_response_slope = get_fee_slope(context.protocol_param)
-    fee_intercept = get_fee_intercept(context.protocol_param)
-    datum_intercept = get_datum_intercept(context.protocol_param)
-
-    base_fee = fee_intercept + datum_intercept + RELAYER_FEE
-    max_fee = fee_intercept + RELAYER_FEE + max_response_size * fee_response_slope
+    max_cost = (
+        CARDANO_FEE_BUFFER
+        + RELAYER_REWARD
+        + max_response_size * context.protocol_param.coins_per_utxo_byte
+    )
     if not response_repo.by_pool_action_id(pool_action_id):
-        max_fee += datum_intercept
+        max_cost += (
+            RESPONSE_DATUM_SIZE_INTERCEPT * context.protocol_param.coins_per_utxo_byte
+        )
 
     return OracleRequest(
         action,
@@ -401,9 +400,9 @@ def create_request(
         int(after.timestamp()),
         int((after + ttl).timestamp()),
         ByteString(bytes(wallet.request_treasury.vk.hash())),
-        ceil(base_fee),
-        ceil(fee_response_slope),
-        ceil(max_fee),
+        RELAYER_REWARD,
+        context.protocol_param.coins_per_utxo_byte,
+        ceil(max_cost),
     )
 
 
@@ -471,21 +470,11 @@ def run_fulfill_request_command(
 
     signed_tx = fulfill_request(context, wallet, protocol, oracle, request, response)
 
-    spent_ada = sum(
-        utxo.output.amount.coin
-        for utxo in builder.inputs
-        if utxo.output.address == wallet.treasury.addr(nw)
-    )
-    received_ada = sum(
-        out.amount.coin
-        for out in signed_tx.transaction_body.outputs
-        if out.address == wallet.treasury.addr(nw)
-    )
     change = next(
         (
             out.amount.coin
             for out in signed_tx.transaction_body.outputs
-            if out.address == wallet.request_treasury.addr(nw)
+            if out.address == wallet.request_treasury.addr(context.network)
         ),
         0,
     )
@@ -493,7 +482,6 @@ def run_fulfill_request_command(
     print("User change:     ", change)
 
     print("Cardano tx fee:  ", signed_tx.transaction_body.fee)
-    print("Relayer profit:  ", received_ada - spent_ada)
 
     handle_tx(signed_tx=signed_tx, context=context, args=args)
 
@@ -556,28 +544,40 @@ def fulfill_request(
 
     response_size = len(response.message.data.to_cbor())
 
-    fee_response_slope = get_fee_slope(context.protocol_param)
-    fee_intercept = get_fee_intercept(context.protocol_param)
-    datum_intercept = get_datum_intercept(context.protocol_param)
+    min_cost = (
+        RELAYER_REWARD
+        + 0
+        + context.protocol_param.coins_per_utxo_byte * (274 + response_size)
+        - sum((r.utxo.output.amount.coin for r in existing_responses))
+    )
+    capped_min_cost = max(0, min(request.request.max_cost, min_cost))
+    max_change = request.utxo.output.amount.coin - capped_min_cost
+    builder.add_output(
+        TransactionOutput(
+            wallet.request_treasury.addr(nw),
+            Value(max_change),
+        )
+    )
 
-    base_fee = fee_intercept + datum_intercept + RELAYER_FEE
-    actual_fee = max(
-        0,
-        floor(
-            base_fee
-            + fee_response_slope * response_size
-            - sum((r.utxo.output.amount.coin for r in existing_responses))
+    tx = builder.build_and_sign(
+        [wallet.treasury.sk],
+        change_address=wallet.treasury.addr(nw),
+        merge_change=True,
+        collateral_change_address=wallet.treasury.addr(nw),
+        auto_ttl_offset=min(
+            int(oracle.data.response_validity_period.total_seconds() * 0.9), 10_000
         ),
     )
 
-    change = request.utxo.output.amount - Value(actual_fee)
-    if change > 0:
-        builder.add_output(
-            TransactionOutput(
-                wallet.request_treasury.addr(nw),
-                change,
-            )
-        )
+    real_cost = min_cost + tx.transaction_body.fee
+    capped_real_cost = max(0, real_cost)
+    real_change = request.utxo.output.amount.coin - capped_real_cost
+    change_output = next(
+        (o for o in builder.outputs if o.address == wallet.request_treasury.addr(nw))
+    )
+    change_output.amount = Value(real_change)
+
+    builder._should_estimate_execution_units = False
 
     return builder.build_and_sign(
         [wallet.treasury.sk],
@@ -607,53 +607,11 @@ def print_request(request: OracleRequest, network: Network, indent: str = ""):
     print(f"{indent}Valid After:       {request.format_after()}")
     print(f"{indent}Valid Before:      {request.format_before()}")
     print(
-        f"{indent}Fee:               min({request.fee_per_response_byte} * size(response) + {request.base_fee}, {request.max_fee})"
+        f"{indent}Fee:               min(({request.coin_per_utxo_byte} * ({RESPONSE_DATUM_SIZE_INTERCEPT} + size(response)) + {request.reward} + fee, {request.max_cost})"
     )
     print(
         f"{indent}Owner:             {Address(VerificationKeyHash(request.owner_pkh.value), network=network)}"
     )
-
-
-REQUEST_VALIDATOR_MEM_RESPONSE_SLOPE = 0.26862522318578114
-REQUEST_VALIDATOR_MEM_INTERCEPT = 2444955.1270897575
-REQUEST_VALIDATOR_STEPS_RESPONSE_SLOPE = 28376.961085864274
-REQUEST_VALIDATOR_STEPS_INTERCEPT = 607304434.1903505
-RESPONSE_VALIDATOR_MEM_RESPONSE_SLOPE = 0.2662717091419963
-RESPONSE_VALIDATOR_MEM_INTERCEPT = 1031963.3169128388
-RESPONSE_VALIDATOR_STEPS_RESPONSE_SLOPE = 41384.99833630961
-RESPONSE_VALIDATOR_STEPS_INTERCEPT = 310053093.94453
-TRANSACTION_SIZE_RESPONSE_SLOPE = 2
-TRANSACTION_SIZE_INTERCEPT = 10435
-RESPONSE_DATUM_SIZE_INTERCEPT = 274
-
-
-def get_fee_slope(pp: ProtocolParameters) -> float:
-    return (
-        pp.min_fee_coefficient * TRANSACTION_SIZE_RESPONSE_SLOPE
-        + pp.coins_per_utxo_byte
-        + pp.price_mem
-        * (REQUEST_VALIDATOR_MEM_RESPONSE_SLOPE + RESPONSE_VALIDATOR_MEM_RESPONSE_SLOPE)
-        + pp.price_step
-        * (
-            REQUEST_VALIDATOR_STEPS_RESPONSE_SLOPE
-            + RESPONSE_VALIDATOR_STEPS_RESPONSE_SLOPE
-        )
-    )
-
-
-def get_fee_intercept(pp: ProtocolParameters) -> float:
-    return (
-        pp.min_fee_coefficient * TRANSACTION_SIZE_INTERCEPT
-        + pp.min_fee_constant
-        + pp.price_mem
-        * (REQUEST_VALIDATOR_MEM_INTERCEPT + RESPONSE_VALIDATOR_MEM_INTERCEPT)
-        + pp.price_step
-        * (REQUEST_VALIDATOR_STEPS_INTERCEPT + RESPONSE_VALIDATOR_STEPS_INTERCEPT)
-    )
-
-
-def get_datum_intercept(pp: ProtocolParameters) -> float:
-    return pp.coins_per_utxo_byte * RESPONSE_DATUM_SIZE_INTERCEPT
 
 
 if __name__ == "__main__":

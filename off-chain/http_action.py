@@ -64,13 +64,12 @@ http_action_arg_parser.add_argument(
 def parse_http_action_with_proof(
     args: Namespace, td_vk: Optional[VerifyingKey]
 ) -> HTTPActionWithProof:
-
     return create_http_action_with_proof(
-        args.method,
+        args.request,
         args.url,
         args.header,
         args.data,
-        ards.enc_url_suffix,
+        args.enc_url_suffix,
         args.enc_header,
         args.enc_data,
         td_vk,
@@ -158,5 +157,5 @@ def encrypt(
 
     if include_ephemeral_public_key:
         return pub_key.to_string() + nonce + tag + ciphertext
-    else:
-        return nonce + tag + ciphertext
+
+    return nonce + tag + ciphertext

@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-from argparse import ArgumentParser, Namespace
+from argparse import ArgumentParser
 
 from dotenv import load_dotenv
-from pycardano import Address, TransactionBuilder, TransactionOutput, Value
+from pycardano import TransactionBuilder, TransactionOutput, Value
 
 from networks import get_chain_context
 from utils import handle_tx, passphrase_arg_parser, tx_arg_parser

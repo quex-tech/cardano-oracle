@@ -2,8 +2,6 @@
 # Copyright 2025 Quex Technologies
 from base64 import b64decode
 from dataclasses import dataclass, fields
-from copy import deepcopy
-from hashlib import sha256
 from time import gmtime, strftime
 from types import UnionType
 from typing import List, Optional, get_origin, get_args, Union
@@ -298,9 +296,9 @@ class OracleRequest(FixedPlutusData):
     after: int
     before: int
     owner_pkh: ByteString
-    base_fee: int
-    fee_per_response_byte: int
-    max_fee: int
+    reward: int
+    coin_per_utxo_byte: int
+    max_cost: int
 
     def format_after(self):
         return format_unixtime_seconds(self.after)
@@ -311,4 +309,3 @@ class OracleRequest(FixedPlutusData):
 
 def format_unixtime_seconds(sec):
     return strftime("%Y-%m-%dT%H:%M:%SZ", gmtime(sec))
-    

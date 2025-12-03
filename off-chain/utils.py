@@ -3,7 +3,7 @@
 from argparse import ArgumentParser, Namespace
 import json
 from time import sleep
-from typing import List, Mapping
+from typing import Mapping
 
 from pycardano import ChainContext, PlutusScript, Transaction, TransactionInput
 

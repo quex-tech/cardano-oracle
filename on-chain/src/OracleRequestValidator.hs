@@ -33,7 +33,6 @@ module OracleRequestValidator (oracleRequestValidatorScript, OracleRequest) wher
 
 import GHC.Generics (Generic)
 import PlutusCore.Version (plcVersion110)
-import PlutusLedgerApi.Data.V3 ()
 import PlutusLedgerApi.V1
   ( DiffMilliSeconds (DiffMilliSeconds),
     Lovelace (Lovelace),
@@ -57,11 +56,12 @@ import PlutusLedgerApi.V3
     ScriptInfo (SpendingScript),
     TxInInfo (txInInfoResolved),
     TxOut (txOutAddress, txOutDatum, txOutValue),
+    txInfoFee,
     txInfoInputs,
     txInfoOutputs,
     txInfoValidRange,
   )
-import PlutusLedgerApi.V3.Contexts (txInInfoOutRef, txSignedBy)
+import PlutusLedgerApi.V3.Contexts (findOwnInput, txSignedBy)
 import PlutusTx
 import PlutusTx.Blueprint (HasBlueprintDefinition (..), definitionRef)
 import PlutusTx.Builtins (serialiseData)
@@ -81,9 +81,9 @@ data OracleRequest = MkOracleRequest
     reqAfter :: POSIXTimeSeconds,
     reqBefore :: POSIXTimeSeconds,
     reqOwner :: PubKeyHash,
-    reqBaseFee :: Lovelace,
-    reqFeePerResponseByte :: Lovelace,
-    reqMaxFee :: Lovelace
+    reqReward :: Lovelace,
+    reqCoinPerUTxOByte :: Lovelace,
+    reqMaxCost :: Lovelace
   }
   deriving stock (Generic)
   deriving anyclass (HasBlueprintDefinition)
@@ -92,7 +92,7 @@ $(makeIsDataSchemaIndexed ''OracleRequest [('MkOracleRequest, 0)])
 
 {-# INLINEABLE oracleRequestTypedValidator #-}
 oracleRequestTypedValidator :: CurrencySymbol -> OracleRequest -> ScriptContext -> Bool
-oracleRequestTypedValidator currencySymbol (MkOracleRequest _ _ poolActionID start end owner baseFee feePerResponseByte maxFee) ctx@(ScriptContext txInfo _ _) =
+oracleRequestTypedValidator currencySymbol (MkOracleRequest _ _ poolActionID start end owner reward coinPerUTxOByte maxCost) ctx@(ScriptContext txInfo _ _) =
   let requestExpiresAt = fromMilliSeconds (DiffMilliSeconds (1000 * end))
       requestExpired = requestExpiresAt `before` txInfoValidRange txInfo
    in if requestExpired
@@ -101,13 +101,13 @@ oracleRequestTypedValidator currencySymbol (MkOracleRequest _ _ poolActionID sta
           let txOutputs = txInfoOutputs txInfo
               responseAssetClass = AssetClass (currencySymbol, poolActionID)
               mResponseDatum = findValidResponseDatum responseAssetClass start end txOutputs
-              requestAda =
-                case findOwnInputConst ctx of
+              requestCoin =
+                case findOwnInput ctx of
                   Nothing -> error ()
                   Just input -> lovelaceValueOf (txOutValue (txInInfoResolved input))
            in case mResponseDatum of
                 Nothing -> False
-                Just responseDatum -> existsChangeOutput responseDatum responseAssetClass feePerResponseByte baseFee maxFee requestAda owner (txInfoInputs txInfo) txOutputs
+                Just responseDatum -> existsChangeOutput responseDatum responseAssetClass coinPerUTxOByte reward maxCost requestCoin (txInfoFee txInfo) owner (txInfoInputs txInfo) txOutputs
 
 {-# INLINEABLE existsChangeOutput #-}
 existsChangeOutput ::
@@ -117,25 +117,22 @@ existsChangeOutput ::
   Lovelace ->
   Lovelace ->
   Lovelace ->
+  Lovelace ->
   PubKeyHash ->
   [TxInInfo] ->
   [TxOut] ->
   Bool
-existsChangeOutput newResponseDatum assetClass (Lovelace feePerResponseByte) baseFee maxFee requestAda owner txInputs txOutputs =
-  let oldResponseAda = adaSpentWithAsset assetClass txInputs
+existsChangeOutput newResponseDatum assetClass (Lovelace coinPerUTxOByte) reward maxCost requestCoin txFee owner txInputs txOutputs =
+  let oldResponseCoin = adaSpentWithAsset assetClass txInputs
       responseBytes = lengthOfByteString (serialiseData newResponseDatum)
-      realFee = max 0 (min maxFee (baseFee + Lovelace (feePerResponseByte * responseBytes) - oldResponseAda))
-      minChange = requestAda - realFee
+      realCost = reward + txFee + Lovelace (coinPerUTxOByte * (274 + responseBytes)) - oldResponseCoin
+      cappedCost = max 0 (min maxCost realCost)
+      minChange = requestCoin - cappedCost
       isOwners out =
         case txOutAddress out of
           Address (PubKeyCredential pkh) _ -> pkh == owner
           _ -> False
-      changeOutputExists =
-        -- to avoid short-circuit
-        case (minChange <= 0, any (\o -> isOwners o && lovelaceValueOf (txOutValue o) >= minChange) txOutputs) of
-          (False, False) -> False
-          _ -> True
-   in changeOutputExists
+   in minChange <= 0 || any (\o -> isOwners o && lovelaceValueOf (txOutValue o) >= minChange) txOutputs
 
 {-# INLINEABLE adaSpentWithAsset #-}
 adaSpentWithAsset :: AssetClass -> [TxInInfo] -> Lovelace
@@ -185,20 +182,6 @@ findValidResponseDatum responseAssetClass start end = foldr go Nothing
                       then Just d
                       else Nothing
               _ -> Nothing
-
-{-# INLINEABLE findOwnInputConst #-}
-findOwnInputConst :: ScriptContext -> Maybe TxInInfo
-findOwnInputConst (ScriptContext txInfo _ (SpendingScript ownRef _)) =
-  let -- We *always* traverse the whole list, even after we found a match.
-      go :: [TxInInfo] -> Maybe TxInInfo -> Maybe TxInInfo
-      go [] acc = acc
-      go (i : is) acc =
-        let matches = txInInfoOutRef i == ownRef
-            -- If this one matches, remember it, but still continue.
-            newAcc = if matches then Just i else acc
-         in go is newAcc
-   in go (txInfoInputs txInfo) Nothing
-findOwnInputConst _ = Nothing
 
 oracleRequestUntypedValidator :: CurrencySymbol -> BuiltinData -> BuiltinUnit
 oracleRequestUntypedValidator responseCurrencySymbol ctx =

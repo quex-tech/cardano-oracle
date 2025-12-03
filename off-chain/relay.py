@@ -4,21 +4,10 @@
 import argparse
 import os
 
-from Crypto.Cipher import AES
-from Crypto.Hash import SHA256
-from Crypto.Protocol.KDF import HKDF
 from dotenv import load_dotenv
-from ecdsa import SECP256k1, SigningKey, VerifyingKey
-from pycardano.serialization import ByteString
+from ecdsa import SECP256k1, VerifyingKey
 
 from http_action import http_action_arg_parser, parse_http_action_with_proof
-from models import (
-    HTTP_METHODS,
-    HTTPAction,
-    HTTPActionWithProof,
-    HTTPRequest,
-    UnencryptedHTTPPrivatePatch,
-)
 from networks import get_chain_context
 from oracles import OracleRepository
 from protocol import Protocol
@@ -57,9 +46,6 @@ def main():
         help="ID of the oracle pool in hex",
     )
     args = parser.parse_args()
-    request = HTTPRequest.from_parts(
-        method=args.request, url=args.url, headers=args.header, body=args.data
-    )
 
     client = SignerClient(args.oracle_url)
     public_key = client.public_key()
