@@ -70,7 +70,9 @@ def main():
 
     context = get_chain_context()
     protocol = Protocol.load(args.plutus_blueprint)
-    oracle_repo = OracleRepository(wallet=wallet, context=context, protocol=protocol)
+    oracle_repo = OracleRepository(
+        wallet=wallet, context=context, validator=protocol.single_oracle_pool_validator
+    )
     oracle = next(
         (
             o
@@ -92,7 +94,7 @@ def main():
     print("PoolAction ID:", pool.pool_action_id(response.message.action_id).hex())
 
     response_repo = ResponseRepository(
-        wallet=wallet, context=context, protocol=protocol
+        wallet=wallet, context=context, validator=protocol.response_validator
     )
 
     handle_tx(

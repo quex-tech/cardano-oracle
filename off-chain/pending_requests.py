@@ -34,7 +34,7 @@ from models import (
 )
 from networks import get_chain_context
 from oracles import OracleRepository, RegisteredOracle
-from protocol import Protocol
+from protocol import Protocol, Validator
 from responses import ResponseRepository, ResponseTransactionBuilder
 from scripts import try_refer_to_script
 from signer_client import SignerClient
@@ -188,7 +188,7 @@ class StoredRequest:
 class RequestRepository:
     wallet: OperatorWallet
     context: ChainContext
-    protocol: Protocol
+    validator: Validator
 
     def all(self) -> List[StoredRequest]:
         return [
@@ -196,7 +196,7 @@ class RequestRepository:
             for sr in (
                 StoredRequest.try_from_utxo(utxo)
                 for utxo in self.context.utxos(
-                    self.protocol.request_addr(self.context.network)
+                    self.validator.addr(self.context.network)
                 )
             )
             if sr
@@ -206,9 +206,7 @@ class RequestRepository:
         return next(
             (
                 StoredRequest.try_from_utxo(u)
-                for u in self.context.utxos(
-                    self.protocol.request_addr(self.context.network)
-                )
+                for u in self.context.utxos(self.validator.addr(self.context.network))
                 if u.input == tx_input
             ),
             None,
@@ -227,11 +225,11 @@ class RequestRepository:
             self.context,
         )
         min_lovelace_request_utxo = min_lovelace_post_alonzo(
-            TransactionOutput(self.protocol.request_addr(nw), Value(), datum=request),
+            TransactionOutput(self.validator.addr(nw), Value(), datum=request),
             self.context,
         )
         tx_out = TransactionOutput(
-            self.protocol.request_addr(nw),
+            self.validator.addr(nw),
             Value(
                 max(
                     min_lovelace_change_utxo + request.max_cost,
@@ -253,7 +251,7 @@ class RequestRepository:
         utxo = next(
             (
                 u
-                for u in self.context.utxos(self.protocol.request_addr(nw))
+                for u in self.context.utxos(self.validator.addr(nw))
                 if u.input == tx_input
             ),
             None,
@@ -266,9 +264,7 @@ class RequestRepository:
         builder.add_input_address(self.wallet.request_treasury.addr(nw))
         builder.add_script_input(
             utxo,
-            try_refer_to_script(
-                self.context, self.wallet, self.protocol.request_validator
-            ),
+            try_refer_to_script(self.context, self.wallet, self.validator.script),
             redeemer=Redeemer(data=Unit()),
         )
 
@@ -303,9 +299,7 @@ class RequestRepository:
 
         builder = TransactionBuilder(self.context)
         builder.add_input_address(self.wallet.request_treasury.addr(nw))
-        script = try_refer_to_script(
-            self.context, self.wallet, self.protocol.request_validator
-        )
+        script = try_refer_to_script(self.context, self.wallet, self.validator.script)
 
         amount = Value(0)
 
@@ -339,7 +333,9 @@ def list_requests(
     protocol: Protocol,
     _,
 ):
-    repo = RequestRepository(wallet=wallet, context=context, protocol=protocol)
+    repo = RequestRepository(
+        wallet=wallet, context=context, validator=protocol.request_validator
+    )
     for request in repo.all():
         print(
             f"- UTxO:              {request.utxo.input.transaction_id}#{request.utxo.input.index}"
@@ -357,7 +353,7 @@ def run_add_request_command(
     request = create_request(
         context,
         wallet,
-        protocol,
+        protocol.response_validator,
         parse_http_action_with_proof(args, args.oracle_pub_key),
         args.oracle_pool_id,
         args.max_response,
@@ -366,7 +362,9 @@ def run_add_request_command(
 
     print_request(request, context.network)
 
-    repo = RequestRepository(wallet=wallet, context=context, protocol=protocol)
+    repo = RequestRepository(
+        wallet=wallet, context=context, validator=protocol.request_validator
+    )
     signed_tx = repo.add_tx(request)
 
     handle_tx(
@@ -379,14 +377,14 @@ def run_add_request_command(
 def create_request(
     context: ChainContext,
     wallet: OperatorWallet,
-    protocol: Protocol,
+    response_validator: Validator,
     action: HTTPActionWithProof,
     pool_id: bytes,
     max_response_size: int,
     ttl: timedelta,
 ) -> OracleRequest:
     response_repo = ResponseRepository(
-        wallet=wallet, context=context, protocol=protocol
+        wallet=wallet, context=context, validator=response_validator
     )
     pool_action_id = sha256(pool_id + action.action.action_id()).digest()
 
@@ -421,7 +419,9 @@ def recycle_request(
     protocol: Protocol,
     args: Namespace,
 ):
-    repo = RequestRepository(wallet=wallet, context=context, protocol=protocol)
+    repo = RequestRepository(
+        wallet=wallet, context=context, validator=protocol.request_validator
+    )
     signed_tx = repo.recycle_tx(args.utxo)
     if not signed_tx:
         print("Request is not found")
@@ -436,7 +436,9 @@ def recycle_all_requests(
     protocol: Protocol,
     args: Namespace,
 ):
-    repo = RequestRepository(wallet=wallet, context=context, protocol=protocol)
+    repo = RequestRepository(
+        wallet=wallet, context=context, validator=protocol.request_validator
+    )
     signed_tx = repo.recycle_all_tx(args.limit)
     if not signed_tx:
         print("No expired requests are found")
@@ -451,15 +453,21 @@ def run_fulfill_request_command(
     protocol: Protocol,
     args: Namespace,
 ):
-    repo = RequestRepository(wallet=wallet, context=context, protocol=protocol)
+    repo = RequestRepository(
+        wallet=wallet, context=context, validator=protocol.request_validator
+    )
     request = repo.find(args.utxo)
     if not request:
         print("Request is not found")
         return
 
     client = SignerClient(args.oracle_url)
-    oracle = find_oracle(
-        context, wallet, protocol, client, request.request.pool_id.value
+    public_key = client.public_key()
+    oracle_repo = OracleRepository(
+        wallet=wallet, context=context, validator=protocol.single_oracle_pool_validator
+    )
+    oracle = oracle_repo.find_by_pub_key_pool_id(
+        public_key, request.request.pool_id.value
     )
     if not oracle:
         print("Oracle is not registered on-chain")
@@ -477,7 +485,14 @@ def run_fulfill_request_command(
     print("  Relayer:       ", response.message.relayer.value.hex())
     print("  Data CBOR size:", response_size)
 
-    signed_tx = fulfill_request(context, wallet, protocol, oracle, request, response)
+    signed_tx = fulfill_request(
+        context,
+        wallet,
+        protocol.response_validator,
+        oracle,
+        request,
+        response,
+    )
 
     change = next(
         (
@@ -495,30 +510,10 @@ def run_fulfill_request_command(
     handle_tx(signed_tx=signed_tx, context=context, args=args)
 
 
-def find_oracle(
-    context: ChainContext,
-    wallet: OperatorWallet,
-    protocol: Protocol,
-    client: SignerClient,
-    pool_id: bytes,
-) -> Optional[RegisteredOracle]:
-    public_key = client.public_key()
-    oracle_repo = OracleRepository(wallet=wallet, context=context, protocol=protocol)
-    return next(
-        (
-            o
-            for o in oracle_repo.registered()
-            if o.data.public_key == public_key
-            if o.pools[0].id == pool_id
-        ),
-        None,
-    )
-
-
 def fulfill_request(
     context: ChainContext,
     wallet: OperatorWallet,
-    protocol: Protocol,
+    response_validator: Validator,
     oracle: RegisteredOracle,
     request: StoredRequest,
     response: QuexResponse,
@@ -530,11 +525,11 @@ def fulfill_request(
     builder.add_input_address(wallet.treasury.addr(nw))
 
     response_repo = ResponseRepository(
-        wallet=wallet, context=context, protocol=protocol
+        wallet=wallet, context=context, validator=response_validator
     )
 
     response_tx_builder = ResponseTransactionBuilder(
-        builder=builder, context=context, protocol=protocol
+        builder=builder, context=context, validator=response_validator
     )
 
     existing_responses = response_repo.by_pool_action_id(pool_action_id)
@@ -547,7 +542,7 @@ def fulfill_request(
 
     builder.add_script_input(
         request.utxo,
-        try_refer_to_script(context, wallet, protocol.request_validator),
+        try_refer_to_script(context, wallet, response_validator.script),
         redeemer=Redeemer(data=Unit()),
     )
 

@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 from models import DataItem, QuexResponse
 from networks import get_chain_context
 from oracles import RegisteredOracle
-from protocol import Protocol
+from protocol import Protocol, Validator
 from utils import passphrase_arg_parser, blueprint_arg_parser, try_from_tx_output
 from wallet import OperatorWallet
 
@@ -37,7 +37,7 @@ def main():
     repo = ResponseRepository(
         wallet=OperatorWallet.from_env(args.passphrase),
         context=get_chain_context(),
-        protocol=Protocol.load(args.plutus_blueprint),
+        validator=Protocol.load(args.plutus_blueprint).response_validator,
     )
 
     for response in repo.all():
@@ -89,7 +89,7 @@ class StoredResponse:
 class ResponseTransactionBuilder:
     builder: TransactionBuilder
     context: ChainContext
-    protocol: Protocol
+    validator: Validator
 
     def add_token_inputs_and_outputs(
         self,
@@ -100,38 +100,38 @@ class ResponseTransactionBuilder:
         nw = self.context.network
 
         assets = MultiAsset.from_primitive(
-            {bytes(self.protocol.response_currency_symbol): {pool_action_id: 1}}
+            {bytes(self.validator.currency_symbol): {pool_action_id: 1}}
         )
 
         if existing_responses:
             for r in existing_responses:
                 self.builder.add_script_input(
                     r.utxo,
-                    self.protocol.response_validator,
+                    self.validator.script,
                     redeemer=Redeemer(data=response),
                 )
             tokens_to_burn = len(existing_responses) - 1
             if tokens_to_burn:
                 self.builder.mint = MultiAsset.from_primitive(
                     {
-                        bytes(self.protocol.response_currency_symbol): {
+                        bytes(self.validator.currency_symbol): {
                             pool_action_id: -tokens_to_burn
                         }
                     }
                 )
                 self.builder.add_minting_script(
-                    self.protocol.response_validator,
+                    self.validator.script,
                     redeemer=Redeemer(data=response),
                 )
         else:
             self.builder.mint = assets
             self.builder.add_minting_script(
-                self.protocol.response_validator,
+                self.validator.script,
                 redeemer=Redeemer(data=response),
             )
 
         tx_out = TransactionOutput(
-            self.protocol.response_addr(nw),
+            self.validator.addr(nw),
             Value(2_000_000, assets),
             datum=response.message.data,
         )
@@ -143,7 +143,7 @@ class ResponseTransactionBuilder:
 class ResponseRepository:
     wallet: OperatorWallet
     context: ChainContext
-    protocol: Protocol
+    validator: Validator
 
     def all(self) -> List[StoredResponse]:
         return [
@@ -151,10 +151,9 @@ class ResponseRepository:
             for sr in (
                 StoredResponse.try_from_utxo(utxo)
                 for utxo in self.context.utxos(
-                    self.protocol.response_addr(self.context.network)
+                    self.validator.addr(self.context.network)
                 )
-                if self.protocol.response_currency_symbol
-                in utxo.output.amount.multi_asset
+                if self.validator.currency_symbol in utxo.output.amount.multi_asset
             )
             if sr
         ]
@@ -170,7 +169,7 @@ class ResponseRepository:
         builder.add_input_address(self.wallet.treasury.addr(nw))
 
         response_tx_builder = ResponseTransactionBuilder(
-            builder=builder, context=self.context, protocol=self.protocol
+            builder=builder, context=self.context, validator=self.validator
         )
 
         response_tx_builder.add_token_inputs_and_outputs(

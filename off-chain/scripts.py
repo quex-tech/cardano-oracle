@@ -58,7 +58,6 @@ def main():
     repo = ScriptRepository(
         wallet=OperatorWallet.from_env(args.passphrase),
         context=context,
-        protocol=Protocol.load(args.plutus_blueprint),
     )
 
     warnings.filterwarnings(
@@ -89,7 +88,6 @@ def try_refer_to_script(
 class ScriptRepository:
     wallet: OperatorWallet
     context: ChainContext
-    protocol: Protocol
 
     def all(self) -> List[UTxO]:
         nw = self.context.network
@@ -152,11 +150,12 @@ def list_scripts(_, repo: ScriptRepository, __):
 
 
 def add_all_scripts(context: ChainContext, repo: ScriptRepository, args: Namespace):
+    protocol = Protocol.load(args.plutus_blueprint)
     tx = repo.add_tx(
         [
-            repo.protocol.request_validator,
-            repo.protocol.response_validator,
-            repo.protocol.single_oracle_pool_validator,
+            protocol.request_validator.script,
+            protocol.response_validator.script,
+            protocol.single_oracle_pool_validator.script,
         ]
     )
 

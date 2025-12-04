@@ -30,7 +30,7 @@ from pycardano import (
 )
 
 from networks import get_chain_context
-from protocol import Protocol
+from protocol import Protocol, Validator
 from signer_client import SignerClient
 from utils import (
     blueprint_arg_parser,
@@ -103,7 +103,7 @@ def main():
     repo = OracleRepository(
         wallet=OperatorWallet.from_env(args.passphrase),
         context=context,
-        protocol=Protocol.load(args.plutus_blueprint),
+        validator=Protocol.load(args.plutus_blueprint).single_oracle_pool_validator,
     )
 
     args.func(context, repo, args)
@@ -183,7 +183,7 @@ class RegisteredOracle:
 class OracleRepository:
     wallet: OperatorWallet
     context: ChainContext
-    protocol: Protocol
+    validator: Validator
 
     def add_private_tx(self, oracle: Oracle, pool_name: str) -> Transaction:
         policy = ScriptPubkey(self.wallet.treasury.vk.hash())
@@ -211,7 +211,7 @@ class OracleRepository:
     def add_single_oracle_tx(self, oracle: Oracle) -> Transaction:
         plutus_oracle = oracle.to_plutus_data()
         pool = OraclePool(
-            self.protocol.single_oracle_pool_currency_symbol,
+            self.validator.currency_symbol,
             sha256(plutus_oracle.to_cbor()).digest(),
         )
         nw = self.context.network
@@ -220,11 +220,11 @@ class OracleRepository:
         builder.add_input_address(self.wallet.treasury.addr(nw))
         builder.mint = pool.assets
         builder.add_minting_script(
-            self.protocol.single_oracle_pool_validator,
+            self.validator.script,
             redeemer=Redeemer(data=plutus_oracle),
         )
         tx_out = TransactionOutput(
-            self.protocol.single_oracle_pool_addr(nw),
+            self.validator.addr(nw),
             Value(2_000_000, pool.assets),
             datum=plutus_oracle,
         )
@@ -264,9 +264,7 @@ class OracleRepository:
     def registered(self) -> Iterable[RegisteredOracle]:
         return chain(
             self.registered_at(self.wallet.oracles.addr(self.context.network)),
-            self.registered_at(
-                self.protocol.single_oracle_pool_addr(self.context.network)
-            ),
+            self.registered_at(self.validator.addr(self.context.network)),
         )
 
     def registered_at(self, addr: Address) -> Iterable[RegisteredOracle]:
@@ -286,6 +284,17 @@ class OracleRepository:
 
             yield RegisteredOracle(utxo.input, pools, oracle)
 
+    def find_by_pub_key_pool_id(self, public_key: keys.PublicKey, pool_id: bytes):
+        return next(
+            (
+                o
+                for o in self.registered()
+                if o.data.public_key == public_key
+                if o.pools[0].id == pool_id
+            ),
+            None,
+        )
+
 
 def list_oracles(_, repo: OracleRepository, __):
     for oracle in repo.registered():
@@ -294,8 +303,7 @@ def list_oracles(_, repo: OracleRepository, __):
         for pool in oracle.pools:
             pool_type = (
                 "single-oracle"
-                if pool.currency_symbol
-                == repo.protocol.single_oracle_pool_currency_symbol
+                if pool.currency_symbol == repo.validator.currency_symbol
                 else "private"
             )
             print("- UTxO:                 ", utxo)

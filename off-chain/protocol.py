@@ -26,25 +26,40 @@ def main():
         os.environ.get("CARDANO_NETWORK", "preview"),
     )
     print("Requests:")
-    print("  Address:          ", protocol.request_addr(nw))
-    print("  Script size:      ", len(protocol.request_validator))
+    print("  Address:          ", protocol.request_validator.addr(nw))
+    print("  Script size:      ", len(protocol.request_validator.script))
     print("Responses:")
-    print("  Address:          ", protocol.response_addr(nw))
-    print("  Script size:      ", len(protocol.response_validator))
-    print("  Currency symbol:  ", bytes(protocol.response_currency_symbol).hex())
-    print("Single-oracle pools:")
-    print("  Address:          ", protocol.single_oracle_pool_addr(nw))
-    print("  Script size:      ", len(protocol.single_oracle_pool_validator))
+    print("  Address:          ", protocol.response_validator.addr(nw))
+    print("  Script size:      ", len(protocol.response_validator.script))
     print(
-        "  Currency symbol:  ", bytes(protocol.single_oracle_pool_currency_symbol).hex()
+        "  Currency symbol:  ", bytes(protocol.response_validator.currency_symbol).hex()
+    )
+    print("Single-oracle pools:")
+    print("  Address:          ", protocol.single_oracle_pool_validator.addr(nw))
+    print("  Script size:      ", len(protocol.single_oracle_pool_validator.script))
+    print(
+        "  Currency symbol:  ",
+        bytes(protocol.single_oracle_pool_validator.currency_symbol).hex(),
     )
 
 
 @dataclass
+class Validator:
+    script: PlutusScript
+
+    def addr(self, nw: Network) -> Address:
+        return Address(plutus_script_hash(self.script), network=nw)
+
+    @property
+    def currency_symbol(self) -> ScriptHash:
+        return plutus_script_hash(self.script)
+
+
+@dataclass
 class Protocol:
-    response_validator: PlutusScript
-    request_validator: PlutusScript
-    single_oracle_pool_validator: PlutusScript
+    response_validator: Validator
+    request_validator: Validator
+    single_oracle_pool_validator: Validator
 
     @classmethod
     def load(cls, blueprint_path: str):
@@ -56,29 +71,10 @@ class Protocol:
             )(load_scripts(blueprint_path))
         )
         return cls(
-            response_validator=response_validator,
-            request_validator=request_validator,
-            single_oracle_pool_validator=single_oracle_pool_validator,
+            response_validator=Validator(response_validator),
+            request_validator=Validator(request_validator),
+            single_oracle_pool_validator=Validator(single_oracle_pool_validator),
         )
-
-    def response_addr(self, nw: Network) -> Address:
-        return Address(plutus_script_hash(self.response_validator), network=nw)
-
-    def request_addr(self, nw: Network) -> Address:
-        return Address(plutus_script_hash(self.request_validator), network=nw)
-
-    def single_oracle_pool_addr(self, nw: Network) -> Address:
-        return Address(
-            plutus_script_hash(self.single_oracle_pool_validator), network=nw
-        )
-
-    @property
-    def response_currency_symbol(self) -> ScriptHash:
-        return plutus_script_hash(self.response_validator)
-
-    @property
-    def single_oracle_pool_currency_symbol(self) -> ScriptHash:
-        return plutus_script_hash(self.single_oracle_pool_validator)
 
 
 if __name__ == "__main__":

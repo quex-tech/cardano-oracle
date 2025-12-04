@@ -10,12 +10,8 @@ from pycardano import ExecutionUnits, ChainContext, Transaction, TransactionInpu
 from http_action import create_http_action_with_proof
 from models import QuexResponse
 from networks import get_chain_context
-from pending_requests import (
-    create_request,
-    find_oracle,
-    fulfill_request,
-    RequestRepository,
-)
+from oracles import OracleRepository
+from pending_requests import create_request, fulfill_request, RequestRepository
 from protocol import Protocol
 from signer_client import SignerClient
 from wallet import OperatorWallet
@@ -41,8 +37,14 @@ def main():
         "96dc3580d31151f2e8e50203f67e5c53f4eb630620cd695501339ba954657374526571756573744f7261636c65506f6f6c"
     )
     relayer = bytes(wallet.treasury.vk.hash())
-    request_repo = RequestRepository(wallet=wallet, context=context, protocol=protocol)
-    oracle = find_oracle(context, wallet, protocol, client, pool_id)
+    request_repo = RequestRepository(
+        wallet=wallet, context=context, validator=protocol.request_validator
+    )
+    oracle_repo = OracleRepository(
+        wallet=wallet, context=context, validator=protocol.single_oracle_pool_validator
+    )
+    public_key = client.public_key()
+    oracle = oracle_repo.find_by_pub_key_pool_id(public_key, pool_id)
     if not oracle:
         print("No oracle", file=sys.stderr)
         return
@@ -65,7 +67,7 @@ def main():
         request = create_request(
             context,
             wallet,
-            protocol,
+            protocol.response_validator,
             action,
             pool_id,
             max_response_size=128,
@@ -81,7 +83,12 @@ def main():
 
         response = client.query(action, relayer)
         fulfill_tx = fulfill_request(
-            context, wallet, protocol, oracle, stored_request, response
+            context,
+            wallet,
+            protocol.response_validator,
+            oracle,
+            stored_request,
+            response,
         )
 
         rv = fulfill_tx.transaction_witness_set.redeemer.values()
@@ -97,7 +104,7 @@ def main():
             (
                 out.amount.coin
                 for out in fulfill_tx.transaction_body.outputs
-                if out.address == protocol.response_addr(context.network)
+                if out.address == protocol.response_validator.addr(context.network)
             ),
             0,
         )
