@@ -22,7 +22,7 @@ from models import DataItem, QuexResponse
 from networks import get_chain_context
 from oracles import RegisteredOracle
 from protocol import Protocol
-from utils import passphrase_arg_parser, blueprint_arg_parser
+from utils import passphrase_arg_parser, blueprint_arg_parser, try_from_tx_output
 from wallet import OperatorWallet
 
 
@@ -64,6 +64,24 @@ class StoredResponse:
             pool_action_id=next(
                 iter(next(iter(utxo.output.amount.multi_asset.values())).keys())
             ).payload,
+        )
+
+    @classmethod
+    def try_from_utxo(cls, utxo: UTxO):
+        data = try_from_tx_output(DataItem, utxo.output)
+        if not data:
+            return None
+
+        asset_name = next(
+            iter(next(iter(utxo.output.amount.multi_asset.values()), {}).keys()), None
+        )
+        if not asset_name:
+            return None
+
+        return cls(
+            utxo=utxo,
+            data=data,
+            pool_action_id=asset_name.payload,
         )
 
 
@@ -129,11 +147,16 @@ class ResponseRepository:
 
     def all(self) -> List[StoredResponse]:
         return [
-            StoredResponse.from_utxo(utxo)
-            for utxo in self.context.utxos(
-                self.protocol.response_addr(self.context.network)
+            sr
+            for sr in (
+                StoredResponse.try_from_utxo(utxo)
+                for utxo in self.context.utxos(
+                    self.protocol.response_addr(self.context.network)
+                )
+                if self.protocol.response_currency_symbol
+                in utxo.output.amount.multi_asset
             )
-            if self.protocol.response_currency_symbol in utxo.output.amount.multi_asset
+            if sr
         ]
 
     def by_pool_action_id(self, pool_action_id: bytes):

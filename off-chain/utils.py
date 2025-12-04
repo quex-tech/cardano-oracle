@@ -3,9 +3,17 @@
 from argparse import ArgumentParser, Namespace
 import json
 from time import sleep
-from typing import Mapping
+from typing import Mapping, Optional, Type, Union
 
-from pycardano import ChainContext, PlutusScript, Transaction, TransactionInput
+from cbor2 import CBORDecodeError
+from pycardano import (
+    ChainContext,
+    PlutusScript,
+    Transaction,
+    TransactionInput,
+    TransactionOutput,
+)
+from pycardano.serialization import CBORBase, DeserializeException
 
 
 def handle_tx(signed_tx: Transaction, context: ChainContext, args: Namespace):
@@ -45,8 +53,6 @@ def handle_tx(signed_tx: Transaction, context: ChainContext, args: Namespace):
             print()
             print("Transaction confirmed.")
         return
-
-    context.utxos(signed_tx.transaction_body.outputs[0].address)
 
     print()
     if not show_tx:
@@ -127,3 +133,21 @@ def format_plutus_constr(data: dict) -> str:
         return f"({','.join([format_plutus_dict(field) for field in fields])})"
 
     return {0: "False", 1: "True"}.get(data["constructor"], "()")
+
+
+def try_from_cbor(
+    cls: Type[CBORBase], payload: Union[str, bytes]
+) -> Optional[CBORBase]:
+    try:
+        return cls.from_cbor(payload)
+    except CBORDecodeError:
+        return None
+    except DeserializeException:
+        return None
+
+
+def try_from_tx_output(cls: Type[CBORBase], output: TransactionOutput):
+    if not output.datum:
+        return None
+
+    return try_from_cbor(cls, output.datum.cbor)

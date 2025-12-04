@@ -42,6 +42,7 @@ from utils import (
     blueprint_arg_parser,
     handle_tx,
     passphrase_arg_parser,
+    try_from_tx_output,
     tx_arg_parser,
     parse_tx_input,
 )
@@ -172,10 +173,14 @@ class StoredRequest:
     request: OracleRequest
 
     @classmethod
-    def from_utxo(cls, utxo: UTxO):
+    def try_from_utxo(cls, utxo: UTxO):
+        request = try_from_tx_output(OracleRequest, utxo.output)
+        if not request:
+            return None
+
         return cls(
             utxo=utxo,
-            request=OracleRequest.from_cbor(utxo.output.datum.cbor),
+            request=request,
         )
 
 
@@ -187,16 +192,20 @@ class RequestRepository:
 
     def all(self) -> List[StoredRequest]:
         return [
-            StoredRequest.from_utxo(utxo)
-            for utxo in self.context.utxos(
-                self.protocol.request_addr(self.context.network)
+            sr
+            for sr in (
+                StoredRequest.try_from_utxo(utxo)
+                for utxo in self.context.utxos(
+                    self.protocol.request_addr(self.context.network)
+                )
             )
+            if sr
         ]
 
     def find(self, tx_input: TransactionInput) -> Optional[StoredRequest]:
         return next(
             (
-                StoredRequest.from_utxo(u)
+                StoredRequest.try_from_utxo(u)
                 for u in self.context.utxos(
                     self.protocol.request_addr(self.context.network)
                 )
@@ -328,7 +337,7 @@ def list_requests(
     context: ChainContext,
     wallet: OperatorWallet,
     protocol: Protocol,
-    args: Namespace,
+    _,
 ):
     repo = RequestRepository(wallet=wallet, context=context, protocol=protocol)
     for request in repo.all():

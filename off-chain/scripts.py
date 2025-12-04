@@ -144,7 +144,7 @@ class ScriptRepository:
         )
 
 
-def list_scripts(context: ChainContext, repo: ScriptRepository, args: Namespace):
+def list_scripts(_, repo: ScriptRepository, __):
     for utxo in repo.all():
         print(f"- UTxO:  {utxo.input.transaction_id}#{utxo.input.index}")
         print("  Type: ", type(utxo.output.script).__name__)

@@ -14,7 +14,6 @@ from eth_keys import keys
 from pycardano import (
     Address,
     ChainContext,
-    DeserializeException,
     MultiAsset,
     NativeScript,
     PlutusData,
@@ -38,6 +37,7 @@ from utils import (
     handle_tx,
     parse_tx_input,
     passphrase_arg_parser,
+    try_from_tx_output,
     tx_arg_parser,
 )
 from wallet import OperatorWallet
@@ -275,14 +275,13 @@ class OracleRepository:
             if not pools:
                 continue
 
-            if not utxo.output.datum:
+            plutus_oracle = try_from_tx_output(PlutusOracle, utxo.output)
+            if not plutus_oracle:
                 continue
 
             try:
-                oracle = Oracle.from_plutus_data(
-                    PlutusOracle.from_cbor(utxo.output.datum.cbor)
-                )
-            except DeserializeException:
+                oracle = Oracle.from_plutus_data(plutus_oracle)
+            except Exception:
                 continue
 
             yield RegisteredOracle(utxo.input, pools, oracle)
