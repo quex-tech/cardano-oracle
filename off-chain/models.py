@@ -8,7 +8,12 @@ from typing import List, Optional, get_origin, get_args, Union
 from urllib.parse import urlparse, parse_qsl, urlencode
 
 from eth_utils import keccak
-from pycardano.serialization import ByteString, CBORTag, IndefiniteList
+from pycardano.serialization import (
+    ByteString,
+    CBORTag,
+    IndefiniteList,
+    Primitive,
+)
 from pycardano.plutus import PlutusData, RawPlutusData
 
 from utils import format_plutus_dict
@@ -230,18 +235,39 @@ class HTTPActionWithProof(FixedPlutusData):
 
 
 @dataclass
+class FixedRawPlutusData(RawPlutusData):
+    def to_primitive(self) -> Primitive:
+        def _dfs(obj):
+            if isinstance(obj, list) and obj:
+                return IndefiniteList([_dfs(item) for item in obj])
+            elif isinstance(obj, dict):
+                return {_dfs(k): _dfs(v) for k, v in obj.items()}
+            elif isinstance(obj, CBORTag) and isinstance(obj.value, list) and obj.value:
+                if obj.tag != 102:
+                    value = IndefiniteList([_dfs(item) for item in obj.value])
+                else:
+                    value = [_dfs(item) for item in obj.value]
+                return CBORTag(tag=obj.tag, value=value)
+            elif isinstance(obj, bytes):
+                return ByteString(obj)
+            return obj
+
+        return _dfs(self.data)
+
+
+@dataclass
 class DataItem(FixedPlutusData):
     CONSTR_ID = 0
     timestamp: int
     error: int
-    value: RawPlutusData
+    value: FixedRawPlutusData
 
     @staticmethod
     def parse(value: dict):
         return DataItem(
             timestamp=value["timestamp"],
             error=value["error"],
-            value=RawPlutusData.from_cbor(b64decode(value["value"])),
+            value=FixedRawPlutusData.from_cbor(b64decode(value["value"])),
         )
 
     def format_timestamp(self):
