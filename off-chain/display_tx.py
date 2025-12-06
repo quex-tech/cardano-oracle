@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 import sys
+from pathlib import Path
 
 from pycardano import Transaction
 
 
-def main():
-    with open(sys.argv[1], "rb") as file:
+def main() -> None:
+    with Path(sys.argv[1]).open("rb") as file:
         print(Transaction.from_cbor(file.read()))
 
 

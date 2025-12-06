@@ -1,10 +1,9 @@
-from argparse import ArgumentParser, Namespace
 import os
-from typing import List, Optional
+from argparse import ArgumentParser, Namespace
 
-from Crypto.Cipher import AES
-from Crypto.Hash import SHA256
-from Crypto.Protocol.KDF import HKDF
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from ecdsa import SECP256k1, SigningKey, VerifyingKey
 from eth_keys import keys
 from pycardano.serialization import ByteString
@@ -62,7 +61,7 @@ http_action_arg_parser.add_argument(
 
 
 def parse_http_action_with_proof(
-    args: Namespace, td_vk: Optional[VerifyingKey]
+    args: Namespace, td_vk: VerifyingKey | None
 ) -> HTTPActionWithProof:
     return create_http_action_with_proof(
         args.request,
@@ -78,18 +77,22 @@ def parse_http_action_with_proof(
     )
 
 
+class MissingOracleKeyError(ValueError):
+    pass
+
+
 def create_http_action_with_proof(
     method: str,
     url: str,
-    headers: List[str],
-    body: Optional[str],
-    enc_url_suffix: Optional[str],
-    enc_headers: List[str],
-    enc_body: Optional[str],
-    td_vk: Optional[VerifyingKey],
+    headers: list[str],
+    body: str | None,
+    enc_url_suffix: str | None,
+    enc_headers: list[str],
+    enc_body: str | None,
+    td_vk: VerifyingKey | None,
     filter_: str,
     schema: str,
-):
+) -> HTTPActionWithProof:
     request = HTTPRequest.from_parts(method=method, url=url, headers=headers, body=body)
 
     patch = UnencryptedHTTPPrivatePatch.from_parts(
@@ -104,28 +107,26 @@ def create_http_action_with_proof(
     )
 
     if not patch.empty() and not td_vk:
-        raise Exception("Oracle public key is required")
+        raise MissingOracleKeyError
 
     ephemeral_priv_key = SigningKey.generate(curve=SECP256k1)
 
     action = HTTPAction(
         request=request,
-        patch=patch.encrypt(
-            encrypt_func=lambda x: encrypt(x, td_vk, ephemeral_priv_key)
-        ),
+        patch=patch.encrypt(encrypt_func=lambda x: encrypt(x, td_vk, ephemeral_priv_key)),
         filter=ByteString(filter_.encode()),
         schema=ByteString(schema.encode()),
     )
 
     proof = (
-        encrypt(
+        ephemeral_priv_key.get_verifying_key().to_string()
+        + encrypt(
             action.action_id(),
             td_vk,
             ephemeral_priv_key,
-            include_ephemeral_public_key=True,
         )
         if td_vk and not patch.empty()
-        else bytes()
+        else b""
     )
 
     return HTTPActionWithProof(
@@ -138,7 +139,6 @@ def encrypt(
     message: bytes,
     recipient_pub_key: VerifyingKey,
     priv_key: SigningKey,
-    include_ephemeral_public_key=False,
 ) -> bytes:
     pub_key = priv_key.get_verifying_key()
 
@@ -148,14 +148,19 @@ def encrypt(
 
     # Derive the symmetric key using HKDF with SHA-256
     hkdf_input = b"\x04" + pub_key.to_string() + b"\x04" + shared_key
-    symm_key = HKDF(hkdf_input, 32, salt=None, hashmod=SHA256)
+    hkdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=None,
+        info=b"",
+    )
+    symm_key = hkdf.derive(hkdf_input)
 
     # Encrypt the message using AES-GCM
     nonce = os.urandom(16)
-    cipher = AES.new(symm_key, AES.MODE_GCM, nonce=nonce)
-    ciphertext, tag = cipher.encrypt_and_digest(message)
-
-    if include_ephemeral_public_key:
-        return pub_key.to_string() + nonce + tag + ciphertext
+    cipher = Cipher(algorithms.AES(symm_key), modes.GCM(nonce))
+    encryptor = cipher.encryptor()
+    ciphertext = encryptor.update(message) + encryptor.finalize()
+    tag = encryptor.tag
 
     return nonce + tag + ciphertext

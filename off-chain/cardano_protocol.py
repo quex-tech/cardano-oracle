@@ -316,15 +316,15 @@ class CostsPerByte:
     sha2: float
 
     @property
-    def request_add(self):
+    def request_add(self) -> float:
         return self.tx + self.datum
 
     @property
-    def request_fulfill(self):
+    def request_fulfill(self) -> float:
         return 0
 
     @property
-    def response_fulfill(self):
+    def response_fulfill(self) -> float:
         return (
             self.tx
             # + self.datum
@@ -335,14 +335,12 @@ class CostsPerByte:
         )
 
 
-def main():
+def main() -> None:
     load_dotenv()
 
     context = get_chain_context()
 
-    param_names_by_idx = {}
-    for i, n in enumerate(param_names):
-        param_names_by_idx[i] = n
+    param_names_by_idx = dict(enumerate(param_names))
 
     costs = {}
 

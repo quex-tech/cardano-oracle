@@ -3,8 +3,10 @@
 from base64 import b64encode
 from dataclasses import dataclass
 from urllib.parse import urljoin
+
 import requests
 from eth_keys import keys
+
 from models import HTTPActionWithProof, QuexResponse
 
 TIMEOUT = 30

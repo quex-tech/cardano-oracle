@@ -9,7 +9,7 @@ from utils import handle_tx, passphrase_arg_parser, tx_arg_parser
 from wallet import OperatorWallet
 
 
-def main():
+def main() -> None:
     load_dotenv()
     parser = ArgumentParser(
         parents=[
@@ -33,9 +33,7 @@ def main():
     builder = TransactionBuilder(context)
     builder.add_input_address(wallet.treasury.addr(nw))
 
-    builder.add_output(
-        TransactionOutput(args.recipient, Value(int(args.ada * 1_000_000)))
-    )
+    builder.add_output(TransactionOutput(args.recipient, Value(int(args.ada * 1_000_000))))
 
     signed_tx = builder.build_and_sign(
         [wallet.treasury.sk],

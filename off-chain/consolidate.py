@@ -9,7 +9,7 @@ from utils import handle_tx, passphrase_arg_parser, tx_arg_parser
 from wallet import OperatorWallet
 
 
-def main():
+def main() -> None:
     load_dotenv()
     parser = ArgumentParser(
         parents=[

@@ -2,24 +2,19 @@
 
 ## Setup
 
-Initialize `python3` virtual environment
+Initialize `python3` virtual environment and install dependencies
 ```sh
-python3 -m venv venv
+uv sync
 ```
 
 Activate virtual environment
 ```sh
-source ./venv/bin/activate
-```
-
-Install dependencies
-```sh
-pip install -r requirements.txt
+source .venv/bin/activate
 ```
 
 You are ready to go.
 
-To deactivate the virual environment later, type
+To deactivate the virtual environment later, type
 ```sh
 deactivate
 ```
@@ -65,9 +60,11 @@ You can print these addresses again with:
 Example output:
 
 ```
-Verification key: fd24791e13c21917c93385d4298d9417d3cbfe89b0a4253de85f8b36
-Treasury address: addr_test1vzj0a4rlwvfpxd264n4p7f2ajc9nexyk0aq0p5vnqg6tlvg366vdz
-Oracles address:  addr_test1vpj8dczy5483zxuusllu39lf6e3mnwpcjt2xx9knps25r2quxnvlj
+Verification key:         fd24791e13c21917c93385d4298d9417d3cbfe89b0a4253de85f8b36
+Treasury address:         addr_test1vzj0a4rlwvfpxd264n4p7f2ajc9nexyk0aq0p5vnqg6tlvg366vdz
+Oracles address:          addr_test1vpj8dczy5483zxuusllu39lf6e3mnwpcjt2xx9knps25r2quxnvlj
+Library address:          addr_test1vp4e4zdu4xnla60ry9exg4ux3uws53n0jh9epun8vyntr7gwn5cy0
+Request treasury address: addr_test1vr9fhn3lrz2kqnzgckx45taecmj7ycekuzk5ne5vp8x8yzgh9e3xe
 ```
 
 ### Register an oracle

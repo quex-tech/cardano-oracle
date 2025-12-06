@@ -2,28 +2,29 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2025 Quex Technologies
 import argparse
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import timedelta
-from itertools import chain
 from hashlib import sha256
-from typing import List, Optional, Iterable
+from itertools import chain
+from typing import ClassVar
 
+import eth_utils
 from dotenv import load_dotenv
 from eth_keys import keys
-
 from pycardano import (
+    SCRIPT_HASH_SIZE,
     Address,
     ChainContext,
     MultiAsset,
     NativeScript,
     PlutusData,
     Redeemer,
-    SCRIPT_HASH_SIZE,
     ScriptHash,
     ScriptPubkey,
-    TransactionInput,
     Transaction,
     TransactionBuilder,
+    TransactionInput,
     TransactionOutput,
     Value,
     min_lovelace_post_alonzo,
@@ -43,7 +44,7 @@ from utils import (
 from wallet import OperatorWallet
 
 
-def main():
+def main() -> None:
     load_dotenv()
     parser = argparse.ArgumentParser(description="Manages oracles in pools")
     subparsers = parser.add_subparsers(required=True)
@@ -111,7 +112,7 @@ def main():
 
 @dataclass
 class PlutusOracle(PlutusData):
-    CONSTR_ID = 0
+    CONSTR_ID: ClassVar[int] = 0
     public_key: bytes
     response_validity_period_ms: int
 
@@ -121,21 +122,22 @@ class Oracle:
     public_key: keys.PublicKey
     response_validity_period: timedelta
 
-    def to_plutus_data(self):
+    def to_plutus_data(self) -> PlutusOracle:
         return PlutusOracle(
             public_key=self.public_key.to_compressed_bytes(),
-            response_validity_period_ms=int(
-                self.response_validity_period.total_seconds() * 1000
-            ),
+            response_validity_period_ms=int(self.response_validity_period.total_seconds() * 1000),
         )
 
     @classmethod
-    def from_plutus_data(cls, oracle: PlutusOracle):
+    def try_from_plutus_data(cls, oracle: PlutusOracle):
+        try:
+            public_key = keys.PublicKey.from_compressed_bytes(oracle.public_key)
+        except eth_utils.ValidationError:
+            return None
+
         return cls(
-            public_key=keys.PublicKey.from_compressed_bytes(oracle.public_key),
-            response_validity_period=timedelta(
-                milliseconds=oracle.response_validity_period_ms
-            ),
+            public_key=public_key,
+            response_validity_period=timedelta(milliseconds=oracle.response_validity_period_ms),
         )
 
 
@@ -153,16 +155,14 @@ class OraclePool:
         asset_dict: dict = assets.to_primitive()
         return [
             cls(currency_symbol=ScriptHash(payload=cs), token_name=tn)
-            for cs in asset_dict.keys()
-            for tn in asset_dict[cs].keys()
+            for cs in asset_dict
+            for tn in asset_dict[cs]
             if len(cs) == SCRIPT_HASH_SIZE
         ]
 
     @property
     def assets(self) -> MultiAsset:
-        return MultiAsset.from_primitive(
-            {bytes(self.currency_symbol): {self.token_name: 1}}
-        )
+        return MultiAsset.from_primitive({bytes(self.currency_symbol): {self.token_name: 1}})
 
     @property
     def id(self) -> bytes:
@@ -175,7 +175,7 @@ class OraclePool:
 @dataclass
 class RegisteredOracle:
     input: TransactionInput
-    pools: List[OraclePool]
+    pools: list[OraclePool]
     data: Oracle
 
 
@@ -236,14 +236,10 @@ class OracleRepository:
             change_address=self.wallet.treasury.addr(nw),
         )
 
-    def delete_private_tx(self, tx_input: TransactionInput) -> Optional[Transaction]:
+    def delete_private_tx(self, tx_input: TransactionInput) -> Transaction | None:
         nw = self.context.network
         utxo = next(
-            (
-                u
-                for u in self.context.utxos(self.wallet.oracles.addr(nw))
-                if u.input == tx_input
-            ),
+            (u for u in self.context.utxos(self.wallet.oracles.addr(nw)) if u.input == tx_input),
             None,
         )
 
@@ -277,14 +273,15 @@ class OracleRepository:
             if not plutus_oracle:
                 continue
 
-            try:
-                oracle = Oracle.from_plutus_data(plutus_oracle)
-            except Exception:
+            oracle = Oracle.try_from_plutus_data(plutus_oracle)
+            if not oracle:
                 continue
 
             yield RegisteredOracle(utxo.input, pools, oracle)
 
-    def find_by_pub_key_pool_id(self, public_key: keys.PublicKey, pool_id: bytes):
+    def find_by_pub_key_pool_id(
+        self, public_key: keys.PublicKey, pool_id: bytes
+    ) -> RegisteredOracle | None:
         return next(
             (
                 o
@@ -296,7 +293,7 @@ class OracleRepository:
         )
 
 
-def list_oracles(_, repo: OracleRepository, __):
+def list_oracles(_: ChainContext, repo: OracleRepository, __: argparse.Namespace) -> None:
     for oracle in repo.registered():
         pub_key = oracle.data.public_key.to_compressed_bytes().hex()
         utxo = f"{oracle.input.transaction_id}#{oracle.input.index}"
@@ -316,14 +313,12 @@ def list_oracles(_, repo: OracleRepository, __):
             print("  Resp. validity period:", oracle.data.response_validity_period)
 
 
-def add_oracle(context: ChainContext, repo: OracleRepository, args: argparse.Namespace):
+def add_oracle(context: ChainContext, repo: OracleRepository, args: argparse.Namespace) -> None:
     client = SignerClient(args.url)
 
     oracle = Oracle(
         public_key=client.public_key(),
-        response_validity_period=timedelta(
-            minutes=args.response_validity_period_minutes
-        ),
+        response_validity_period=timedelta(minutes=args.response_validity_period_minutes),
     )
 
     signed_tx = (
@@ -335,9 +330,7 @@ def add_oracle(context: ChainContext, repo: OracleRepository, args: argparse.Nam
     handle_tx(signed_tx, context, args)
 
 
-def delete_oracle(
-    context: ChainContext, repo: OracleRepository, args: argparse.Namespace
-):
+def delete_oracle(context: ChainContext, repo: OracleRepository, args: argparse.Namespace) -> None:
     signed_tx = repo.delete_private_tx(args.utxo)
 
     if not signed_tx:

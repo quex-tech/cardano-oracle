@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2025 Quex Technologies
-import argparse
-from dataclasses import dataclass
 import os
+from argparse import ArgumentParser, Namespace
+from dataclasses import dataclass
 
+from dotenv import load_dotenv
 from pycardano import (
     Address,
     ExtendedSigningKey,
@@ -12,15 +13,14 @@ from pycardano import (
     HDWallet,
     Network,
 )
-from dotenv import load_dotenv
 
 from networks import get_network
 from utils import passphrase_arg_parser
 
 
-def main():
+def main() -> None:
     load_dotenv()
-    parser = argparse.ArgumentParser(
+    parser = ArgumentParser(
         description="Generates wallets and displays addresses",
     )
     subparsers = parser.add_subparsers(required=True)
@@ -48,21 +48,23 @@ def main():
     args.func(args)
 
 
-def generate(args):
+def generate(args: Namespace) -> None:
     mnemonic = HDWallet.generate_mnemonic()
-    wallet = OperatorWallet(
-        HDWallet.from_mnemonic(mnemonic=mnemonic, passphrase=args.passphrase)
-    )
+    wallet = OperatorWallet(HDWallet.from_mnemonic(mnemonic=mnemonic, passphrase=args.passphrase))
     print(f'WALLET_MNEMONIC="{mnemonic}"')
     print_wallet(wallet=wallet)
 
 
-def show(args):
+def show(args: Namespace) -> None:
     wallet = OperatorWallet.from_env(args.passphrase)
     if not wallet:
         print("No wallet in WALLET_MNEMONIC environment variables")
         return
     print_wallet(wallet)
+
+
+class NoWalletMnemonicError(BaseException):
+    pass
 
 
 @dataclass
@@ -73,7 +75,7 @@ class Wallet:
     def from_env(cls, passphrase: str):
         mnemonic = os.environ.get("WALLET_MNEMONIC", None)
         if not mnemonic:
-            return None
+            raise NoWalletMnemonicError
         return cls(HDWallet.from_mnemonic(mnemonic, passphrase=passphrase))
 
     @property
@@ -107,7 +109,7 @@ class OperatorWallet(Wallet):
         return Wallet(self.wallet.derive(3))
 
 
-def print_wallet(wallet: OperatorWallet):
+def print_wallet(wallet: OperatorWallet) -> None:
     print("Verification key:        ", wallet.vk.hash())
     nw = get_network()
     print("Treasury address:        ", wallet.treasury.addr(nw))

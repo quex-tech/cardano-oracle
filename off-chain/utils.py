@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2025 Quex Technologies
-from argparse import ArgumentParser, Namespace
 import json
+from argparse import ArgumentParser, Namespace
+from collections.abc import Mapping
+from pathlib import Path
 from time import sleep
-from typing import Mapping, Optional, Type, Union
 
 from cbor2 import CBORDecodeError
 from pycardano import (
@@ -16,7 +17,7 @@ from pycardano import (
 from pycardano.serialization import CBORBase, DeserializeException
 
 
-def handle_tx(signed_tx: Transaction, context: ChainContext, args: Namespace):
+def handle_tx(signed_tx: Transaction, context: ChainContext, args: Namespace) -> None:
     show_tx = "view_tx" not in args or args.view_tx
     submit_tx = "submit" in args and args.submit
     wait_tx = "wait" not in args or args.wait
@@ -62,13 +63,13 @@ def handle_tx(signed_tx: Transaction, context: ChainContext, args: Namespace):
     )
 
 
-def parse_tx_input(tx_input: str):
+def parse_tx_input(tx_input: str) -> TransactionInput:
     tx, idx = tx_input.split("#")
     return TransactionInput.from_primitive([tx, int(idx)])
 
 
-def load_scripts(path: str) -> Mapping[str, PlutusScript]:
-    with open(path, "r", encoding="utf-8") as f:
+def load_scripts(path: Path) -> Mapping[str, PlutusScript]:
+    with path.open(encoding="utf-8") as f:
         blueprint = json.loads(f.read())
 
     version = int(blueprint["preamble"]["plutusVersion"].strip("v"))
@@ -82,9 +83,7 @@ def load_scripts(path: str) -> Mapping[str, PlutusScript]:
 
 
 tx_arg_parser = ArgumentParser(add_help=False)
-tx_arg_parser.add_argument(
-    "--view-tx", action="store_true", help="View transaction contents"
-)
+tx_arg_parser.add_argument("--view-tx", action="store_true", help="View transaction contents")
 tx_arg_parser.add_argument(
     "--submit",
     action="store_true",
@@ -97,14 +96,13 @@ tx_arg_parser.add_argument(
 )
 
 passphrase_arg_parser = ArgumentParser(add_help=False)
-passphrase_arg_parser.add_argument(
-    "--passphrase", help="Passphrase for the wallet", default=""
-)
+passphrase_arg_parser.add_argument("--passphrase", help="Passphrase for the wallet", default="")
 
 blueprint_arg_parser = ArgumentParser(add_help=False)
 blueprint_arg_parser.add_argument(
     "--plutus-blueprint",
     default="plutus.json",
+    type=Path,
     help=(
         "Path to a Plutus blueprint JSON file containing compiled contracts code. "
         "Default: plutus.json"
@@ -121,7 +119,7 @@ def format_plutus_dict(data: dict) -> str:
         except UnicodeDecodeError:
             return data["bytes"]
     if "list" in data:
-        return f"[{','.join([format_plutus_dict(item) for item in data["list"]])}]"
+        return f"[{','.join([format_plutus_dict(item) for item in data['list']])}]"
     if "constructor" in data:
         return format_plutus_constr(data)
     return "UNKNOWN"
@@ -135,9 +133,7 @@ def format_plutus_constr(data: dict) -> str:
     return {0: "False", 1: "True"}.get(data["constructor"], "()")
 
 
-def try_from_cbor(
-    cls: Type[CBORBase], payload: Union[str, bytes]
-) -> Optional[CBORBase]:
+def try_from_cbor(cls: type[CBORBase], payload: str | bytes) -> CBORBase | None:
     try:
         return cls.from_cbor(payload)
     except CBORDecodeError:
@@ -146,7 +142,7 @@ def try_from_cbor(
         return None
 
 
-def try_from_tx_output(cls: Type[CBORBase], output: TransactionOutput):
+def try_from_tx_output(cls: type[CBORBase], output: TransactionOutput) -> CBORBase | None:
     if not output.datum:
         return None
 

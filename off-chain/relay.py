@@ -14,15 +14,15 @@ from protocol import Protocol
 from responses import ResponseRepository
 from signer_client import SignerClient
 from utils import (
-    handle_tx,
-    tx_arg_parser,
-    passphrase_arg_parser,
     blueprint_arg_parser,
+    handle_tx,
+    passphrase_arg_parser,
+    tx_arg_parser,
 )
 from wallet import OperatorWallet
 
 
-def main():
+def main() -> None:
     load_dotenv()
     parser = argparse.ArgumentParser(
         parents=[
@@ -97,9 +97,7 @@ def main():
         wallet=wallet, context=context, validator=protocol.response_validator
     )
 
-    handle_tx(
-        signed_tx=response_repo.add_tx(response, oracle), context=context, args=args
-    )
+    handle_tx(signed_tx=response_repo.add_tx(response, oracle), context=context, args=args)
 
 
 if __name__ == "__main__":

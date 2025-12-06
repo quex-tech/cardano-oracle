@@ -3,7 +3,8 @@
 # Copyright 2025 Quex Technologies
 import argparse
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from dotenv import load_dotenv
 from pycardano import (
@@ -20,22 +21,22 @@ from pycardano import (
 
 from networks import get_chain_context
 from responses import StoredResponse
-from wallet import OperatorWallet
 from utils import handle_tx, load_scripts, passphrase_arg_parser, tx_arg_parser
+from wallet import OperatorWallet
 
 TX_TTL_OFFSET = timedelta(minutes=10)
 RESPONSE_VALIDITY_PERIOD = timedelta(minutes=30)
 VALIDATOR_TITLE = "Oracle Response Example User Spending Validator"
 
-def main():
+
+def main() -> None:
     load_dotenv()
-    parser = argparse.ArgumentParser(
-        description="Locks and unlocks funds at the demo contract"
-    )
+    parser = argparse.ArgumentParser(description="Locks and unlocks funds at the demo contract")
     user_blueprint_arg_parser = argparse.ArgumentParser(add_help=False)
     user_blueprint_arg_parser.add_argument(
         "--user-plutus-blueprint",
         default="plutus.user.json",
+        type=Path,
         help=(
             "Path to a Plutus blueprint JSON file containing compiled user contract code. "
             "Default: plutus.user.json"
@@ -65,18 +66,18 @@ def main():
     args.func(context, args)
 
 
-def show(context: ChainContext, args):
+def show(context: ChainContext, args: argparse.Namespace) -> None:
     user_script = load_scripts(args.user_plutus_blueprint)[VALIDATOR_TITLE]
     currency_symbol, pool_action_id = load_asset_class(args.user_plutus_blueprint)
     addr = Address(plutus_script_hash(user_script), network=context.network)
     print("Contract address:                 ", addr)
     print("Expected response currency symbol:", currency_symbol)
     print("Expected PoolAction ID:           ", pool_action_id.hex())
-    lovelace = sum((utxo.output.amount.coin for utxo in context.utxos(addr)))
+    lovelace = sum(utxo.output.amount.coin for utxo in context.utxos(addr))
     print("Locked Lovelace:                  ", lovelace)
 
 
-def lock(context: ChainContext, args):
+def lock(context: ChainContext, args: argparse.Namespace) -> None:
     wallet = OperatorWallet.from_env(args.passphrase)
     user_script = load_scripts(args.user_plutus_blueprint)[VALIDATOR_TITLE]
 
@@ -90,7 +91,7 @@ def lock(context: ChainContext, args):
     handle_tx(signed_tx, context, args)
 
 
-def spend(context: ChainContext, args):
+def spend(context: ChainContext, args: argparse.Namespace) -> None:
     wallet = OperatorWallet.from_env(args.passphrase)
     user_script = load_scripts(args.user_plutus_blueprint)[VALIDATOR_TITLE]
     currency_symbol, pool_action_id = load_asset_class(args.user_plutus_blueprint)
@@ -100,7 +101,7 @@ def spend(context: ChainContext, args):
     print("Response address:                 ", args.response_address)
     print("Expected response currency symbol:", currency_symbol)
     print("Expected PoolAction ID:           ", pool_action_id.hex())
-    lovelace = sum((utxo.output.amount.coin for utxo in context.utxos(from_addr)))
+    lovelace = sum(utxo.output.amount.coin for utxo in context.utxos(from_addr))
     print("Locked Lovelace:                  ", lovelace)
     if not lovelace:
         return
@@ -127,11 +128,8 @@ def spend(context: ChainContext, args):
     print("Latest value:                     ", response.data.format_value())
     print("Latest timestamp:                 ", response.data.format_timestamp())
 
-    expires_at = (
-        datetime.fromtimestamp(response.data.timestamp, timezone.utc)
-        + RESPONSE_VALIDITY_PERIOD
-    )
-    transaction_valid_to = datetime.now(timezone.utc) + TX_TTL_OFFSET
+    expires_at = datetime.fromtimestamp(response.data.timestamp, UTC) + RESPONSE_VALIDITY_PERIOD
+    transaction_valid_to = datetime.now(UTC) + TX_TTL_OFFSET
     time_remaining = expires_at - transaction_valid_to
     print("Time before expiration:           ", max(timedelta(), time_remaining))
     if time_remaining < timedelta():
@@ -158,8 +156,8 @@ def spend(context: ChainContext, args):
     handle_tx(signed_tx, context, args)
 
 
-def load_asset_class(path: str) -> (ScriptHash, bytes):
-    with open(path, "r", encoding="utf-8") as f:
+def load_asset_class(path: Path) -> (ScriptHash, bytes):
+    with path.open(encoding="utf-8") as f:
         blueprint = json.loads(f.read())
 
     (validator,) = blueprint["validators"]

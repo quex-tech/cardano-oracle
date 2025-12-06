@@ -1,11 +1,10 @@
 #!/usr/bin/env python
+import os
 from argparse import ArgumentParser, Namespace
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from math import ceil
-import os
-from typing import List, Optional
 
 from dotenv import load_dotenv
 from ecdsa import SECP256k1, VerifyingKey
@@ -28,8 +27,8 @@ from pycardano.serialization import ByteString
 
 from http_action import http_action_arg_parser, parse_http_action_with_proof
 from models import (
-    OracleRequest,
     HTTPActionWithProof,
+    OracleRequest,
     QuexResponse,
 )
 from networks import get_chain_context
@@ -41,10 +40,10 @@ from signer_client import SignerClient
 from utils import (
     blueprint_arg_parser,
     handle_tx,
+    parse_tx_input,
     passphrase_arg_parser,
     try_from_tx_output,
     tx_arg_parser,
-    parse_tx_input,
 )
 from wallet import OperatorWallet
 
@@ -53,7 +52,7 @@ RELAYER_REWARD = 50_000
 RESPONSE_DATUM_SIZE_INTERCEPT = 274
 
 
-def main():
+def main() -> None:
     load_dotenv()
     parser = ArgumentParser(
         description="Manage pending oracle requests stored on-chain",
@@ -79,9 +78,7 @@ def main():
     )
     parser_add.add_argument(
         "--oracle-pub-key",
-        type=lambda x: VerifyingKey.from_string(
-            bytes.fromhex(x.removeprefix("0x")), SECP256k1
-        ),
+        type=lambda x: VerifyingKey.from_string(bytes.fromhex(x.removeprefix("0x")), SECP256k1),
         help="Public key of the oracle. Needed for encryption",
     )
     parser_add.add_argument(
@@ -94,7 +91,8 @@ def main():
         "--ttl",
         default=timedelta(hours=1),
         type=lambda s: timedelta(minutes=int(s)),
-        help="TTL of the request in minutes. After it expires, author can reclaim funds. Default: 60",
+        help="TTL of the request in minutes."
+        " After it expires, author can reclaim funds. Default: 60",
     )
     parser_add.add_argument(
         "--max-response",
@@ -190,19 +188,17 @@ class RequestRepository:
     context: ChainContext
     validator: Validator
 
-    def all(self) -> List[StoredRequest]:
+    def all(self) -> list[StoredRequest]:
         return [
             sr
             for sr in (
                 StoredRequest.try_from_utxo(utxo)
-                for utxo in self.context.utxos(
-                    self.validator.addr(self.context.network)
-                )
+                for utxo in self.context.utxos(self.validator.addr(self.context.network))
             )
             if sr
         ]
 
-    def find(self, tx_input: TransactionInput) -> Optional[StoredRequest]:
+    def find(self, tx_input: TransactionInput) -> StoredRequest | None:
         return next(
             (
                 StoredRequest.try_from_utxo(u)
@@ -246,14 +242,10 @@ class RequestRepository:
             collateral_change_address=self.wallet.request_treasury.addr(nw),
         )
 
-    def recycle_tx(self, tx_input: TransactionInput):
+    def recycle_tx(self, tx_input: TransactionInput) -> Transaction | None:
         nw = self.context.network
         utxo = next(
-            (
-                u
-                for u in self.context.utxos(self.validator.addr(nw))
-                if u.input == tx_input
-            ),
+            (u for u in self.context.utxos(self.validator.addr(nw)) if u.input == tx_input),
             None,
         )
 
@@ -282,10 +274,10 @@ class RequestRepository:
             merge_change=True,
         )
 
-    def recycle_all_tx(self, limit: int):
+    def recycle_all_tx(self, limit: int) -> Transaction | None:
         nw = self.context.network
 
-        now = int((datetime.now(timezone.utc)).timestamp())
+        now = int((datetime.now(UTC)).timestamp())
 
         owner_pkh = bytes(self.wallet.request_treasury.vk.hash())
         requests = [
@@ -331,11 +323,9 @@ def list_requests(
     context: ChainContext,
     wallet: OperatorWallet,
     protocol: Protocol,
-    _,
-):
-    repo = RequestRepository(
-        wallet=wallet, context=context, validator=protocol.request_validator
-    )
+    _: Namespace,
+) -> None:
+    repo = RequestRepository(wallet=wallet, context=context, validator=protocol.request_validator)
     for request in repo.all():
         print(
             f"- UTxO:              {request.utxo.input.transaction_id}#{request.utxo.input.index}"
@@ -349,7 +339,7 @@ def run_add_request_command(
     wallet: OperatorWallet,
     protocol: Protocol,
     args: Namespace,
-):
+) -> None:
     request = create_request(
         context,
         wallet,
@@ -362,9 +352,7 @@ def run_add_request_command(
 
     print_request(request, context.network)
 
-    repo = RequestRepository(
-        wallet=wallet, context=context, validator=protocol.request_validator
-    )
+    repo = RequestRepository(wallet=wallet, context=context, validator=protocol.request_validator)
     signed_tx = repo.add_tx(request)
 
     handle_tx(
@@ -383,12 +371,10 @@ def create_request(
     max_response_size: int,
     ttl: timedelta,
 ) -> OracleRequest:
-    response_repo = ResponseRepository(
-        wallet=wallet, context=context, validator=response_validator
-    )
+    response_repo = ResponseRepository(wallet=wallet, context=context, validator=response_validator)
     pool_action_id = sha256(pool_id + action.action.action_id()).digest()
 
-    after = datetime.now(timezone.utc)
+    after = datetime.now(UTC)
 
     max_cost = (
         CARDANO_FEE_BUFFER
@@ -396,9 +382,7 @@ def create_request(
         + max_response_size * context.protocol_param.coins_per_utxo_byte
     )
     if not response_repo.by_pool_action_id(pool_action_id):
-        max_cost += (
-            RESPONSE_DATUM_SIZE_INTERCEPT * context.protocol_param.coins_per_utxo_byte
-        )
+        max_cost += RESPONSE_DATUM_SIZE_INTERCEPT * context.protocol_param.coins_per_utxo_byte
 
     return OracleRequest(
         action,
@@ -418,10 +402,8 @@ def recycle_request(
     wallet: OperatorWallet,
     protocol: Protocol,
     args: Namespace,
-):
-    repo = RequestRepository(
-        wallet=wallet, context=context, validator=protocol.request_validator
-    )
+) -> None:
+    repo = RequestRepository(wallet=wallet, context=context, validator=protocol.request_validator)
     signed_tx = repo.recycle_tx(args.utxo)
     if not signed_tx:
         print("Request is not found")
@@ -435,10 +417,8 @@ def recycle_all_requests(
     wallet: OperatorWallet,
     protocol: Protocol,
     args: Namespace,
-):
-    repo = RequestRepository(
-        wallet=wallet, context=context, validator=protocol.request_validator
-    )
+) -> None:
+    repo = RequestRepository(wallet=wallet, context=context, validator=protocol.request_validator)
     signed_tx = repo.recycle_all_tx(args.limit)
     if not signed_tx:
         print("No expired requests are found")
@@ -452,10 +432,8 @@ def run_fulfill_request_command(
     wallet: OperatorWallet,
     protocol: Protocol,
     args: Namespace,
-):
-    repo = RequestRepository(
-        wallet=wallet, context=context, validator=protocol.request_validator
-    )
+) -> None:
+    repo = RequestRepository(wallet=wallet, context=context, validator=protocol.request_validator)
     request = repo.find(args.utxo)
     if not request:
         print("Request is not found")
@@ -466,9 +444,7 @@ def run_fulfill_request_command(
     oracle_repo = OracleRepository(
         wallet=wallet, context=context, validator=protocol.single_oracle_pool_validator
     )
-    oracle = oracle_repo.find_by_pub_key_pool_id(
-        public_key, request.request.pool_id.value
-    )
+    oracle = oracle_repo.find_by_pub_key_pool_id(public_key, request.request.pool_id.value)
     if not oracle:
         print("Oracle is not registered on-chain")
         return
@@ -524,9 +500,7 @@ def fulfill_request(
     builder = TransactionBuilder(context)
     builder.add_input_address(wallet.treasury.addr(nw))
 
-    response_repo = ResponseRepository(
-        wallet=wallet, context=context, validator=response_validator
-    )
+    response_repo = ResponseRepository(wallet=wallet, context=context, validator=response_validator)
 
     response_tx_builder = ResponseTransactionBuilder(
         builder=builder, context=context, validator=response_validator
@@ -534,9 +508,7 @@ def fulfill_request(
 
     existing_responses = response_repo.by_pool_action_id(pool_action_id)
 
-    response_tx_builder.add_token_inputs_and_outputs(
-        existing_responses, pool_action_id, response
-    )
+    response_tx_builder.add_token_inputs_and_outputs(existing_responses, pool_action_id, response)
 
     builder.reference_inputs.add(oracle.input)
 
@@ -552,7 +524,7 @@ def fulfill_request(
         RELAYER_REWARD
         + 0
         + context.protocol_param.coins_per_utxo_byte * (274 + response_size)
-        - sum((r.utxo.output.amount.coin for r in existing_responses))
+        - sum(r.utxo.output.amount.coin for r in existing_responses)
     )
     capped_min_cost = max(0, min(request.request.max_cost, min_cost))
     max_change = request.utxo.output.amount.coin - capped_min_cost
@@ -577,7 +549,7 @@ def fulfill_request(
     capped_real_cost = max(0, real_cost)
     real_change = request.utxo.output.amount.coin - capped_real_cost
     change_output = next(
-        (o for o in builder.outputs if o.address == wallet.request_treasury.addr(nw))
+        o for o in builder.outputs if o.address == wallet.request_treasury.addr(nw)
     )
     change_output.amount = Value(real_change)
 
@@ -594,7 +566,7 @@ def fulfill_request(
     )
 
 
-def print_request(request: OracleRequest, network: Network, indent: str = ""):
+def print_request(request: OracleRequest, network: Network, indent: str = "") -> None:
     action_id = request.action.action.action_id()
     print(f"{indent}Action ID:         {action_id.hex()}")
     print(f"{indent}Pool ID:           {request.pool_id.value.hex()}")
@@ -611,11 +583,13 @@ def print_request(request: OracleRequest, network: Network, indent: str = ""):
     print(f"{indent}Valid After:       {request.format_after()}")
     print(f"{indent}Valid Before:      {request.format_before()}")
     print(
-        f"{indent}Fee:               min(({request.coin_per_utxo_byte} * ({RESPONSE_DATUM_SIZE_INTERCEPT} + size(response)) + {request.reward} + fee, {request.max_cost})"
+        f"{indent}Fee:               min("
+        f"({request.coin_per_utxo_byte} * ({RESPONSE_DATUM_SIZE_INTERCEPT} + size(response))"
+        f" + {request.reward} + fee"
+        f", {request.max_cost})"
     )
-    print(
-        f"{indent}Owner:             {Address(VerificationKeyHash(request.owner_pkh.value), network=network)}"
-    )
+    owner = Address(VerificationKeyHash(request.owner_pkh.value), network=network)
+    print(f"{indent}Owner:             {owner}")
 
 
 if __name__ == "__main__":

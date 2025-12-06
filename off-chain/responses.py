@@ -3,8 +3,8 @@
 # Copyright 2025 Quex Technologies
 import argparse
 from dataclasses import dataclass
-from typing import List
 
+from dotenv import load_dotenv
 from pycardano import (
     ChainContext,
     MultiAsset,
@@ -16,17 +16,16 @@ from pycardano import (
     Value,
     min_lovelace_post_alonzo,
 )
-from dotenv import load_dotenv
 
 from models import DataItem, QuexResponse
 from networks import get_chain_context
 from oracles import RegisteredOracle
 from protocol import Protocol, Validator
-from utils import passphrase_arg_parser, blueprint_arg_parser, try_from_tx_output
+from utils import blueprint_arg_parser, passphrase_arg_parser, try_from_tx_output
 from wallet import OperatorWallet
 
 
-def main():
+def main() -> None:
     load_dotenv()
     parser = argparse.ArgumentParser(
         parents=[passphrase_arg_parser, blueprint_arg_parser],
@@ -41,9 +40,7 @@ def main():
     )
 
     for response in repo.all():
-        print(
-            f"- UTxO:          {response.utxo.input.transaction_id}#{response.utxo.input.index}"
-        )
+        print(f"- UTxO:          {response.utxo.input.transaction_id}#{response.utxo.input.index}")
         print("  PoolAction ID:", response.pool_action_id.hex())
         print("  Timestamp:    ", response.data.format_timestamp())
         print("  Error:        ", response.data.error)
@@ -93,10 +90,10 @@ class ResponseTransactionBuilder:
 
     def add_token_inputs_and_outputs(
         self,
-        existing_responses: List[StoredResponse],
+        existing_responses: list[StoredResponse],
         pool_action_id: bytes,
         response: QuexResponse,
-    ):
+    ) -> None:
         nw = self.context.network
 
         assets = MultiAsset.from_primitive(
@@ -113,11 +110,7 @@ class ResponseTransactionBuilder:
             tokens_to_burn = len(existing_responses) - 1
             if tokens_to_burn:
                 self.builder.mint = MultiAsset.from_primitive(
-                    {
-                        bytes(self.validator.currency_symbol): {
-                            pool_action_id: -tokens_to_burn
-                        }
-                    }
+                    {bytes(self.validator.currency_symbol): {pool_action_id: -tokens_to_burn}}
                 )
                 self.builder.add_minting_script(
                     self.validator.script,
@@ -145,20 +138,18 @@ class ResponseRepository:
     context: ChainContext
     validator: Validator
 
-    def all(self) -> List[StoredResponse]:
+    def all(self) -> list[StoredResponse]:
         return [
             sr
             for sr in (
                 StoredResponse.try_from_utxo(utxo)
-                for utxo in self.context.utxos(
-                    self.validator.addr(self.context.network)
-                )
+                for utxo in self.context.utxos(self.validator.addr(self.context.network))
                 if self.validator.currency_symbol in utxo.output.amount.multi_asset
             )
             if sr
         ]
 
-    def by_pool_action_id(self, pool_action_id: bytes):
+    def by_pool_action_id(self, pool_action_id: bytes) -> list[StoredResponse]:
         return [r for r in self.all() if r.pool_action_id == pool_action_id]
 
     def add_tx(self, response: QuexResponse, oracle: RegisteredOracle) -> Transaction:

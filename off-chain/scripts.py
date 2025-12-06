@@ -1,8 +1,7 @@
 #!/usr/bin/env python
+import warnings
 from argparse import ArgumentParser, Namespace
 from dataclasses import dataclass
-from typing import List, Optional, Union
-import warnings
 
 from dotenv import load_dotenv
 from pycardano import (
@@ -20,11 +19,11 @@ from pycardano import (
 
 from networks import get_chain_context
 from protocol import Protocol
-from utils import blueprint_arg_parser, passphrase_arg_parser, handle_tx, tx_arg_parser
+from utils import blueprint_arg_parser, handle_tx, passphrase_arg_parser, tx_arg_parser
 from wallet import OperatorWallet
 
 
-def main():
+def main() -> None:
     load_dotenv()
     parser = ArgumentParser(
         description="Manage reference scripts stored on-chain",
@@ -72,8 +71,8 @@ def main():
 def try_refer_to_script(
     context: ChainContext,
     wallet: OperatorWallet,
-    script: Union[NativeScript, PlutusScript],
-) -> Union[NativeScript, PlutusScript, UTxO]:
+    script: NativeScript | PlutusScript,
+) -> NativeScript | PlutusScript | UTxO:
     return next(
         (
             u
@@ -89,12 +88,12 @@ class ScriptRepository:
     wallet: OperatorWallet
     context: ChainContext
 
-    def all(self) -> List[UTxO]:
+    def all(self) -> list[UTxO]:
         nw = self.context.network
         utxos = self.context.utxos(self.wallet.library.addr(nw))
         return [u for u in utxos if u.output.script]
 
-    def add_tx(self, scripts: [PlutusScript]) -> Optional[Transaction]:
+    def add_tx(self, scripts: [PlutusScript]) -> Transaction | None:
         existing = [u.output.script for u in self.all()]
         scripts_to_add = [s for s in scripts if s not in existing]
         if not scripts_to_add:
@@ -117,7 +116,7 @@ class ScriptRepository:
             change_address=self.wallet.treasury.addr(nw),
         )
 
-    def clear_tx(self):
+    def clear_tx(self) -> Transaction:
         nw = self.context.network
 
         builder = TransactionBuilder(self.context)
@@ -142,14 +141,14 @@ class ScriptRepository:
         )
 
 
-def list_scripts(_, repo: ScriptRepository, __):
+def list_scripts(_: ChainContext, repo: ScriptRepository, __: Namespace) -> None:
     for utxo in repo.all():
         print(f"- UTxO:  {utxo.input.transaction_id}#{utxo.input.index}")
         print("  Type: ", type(utxo.output.script).__name__)
         print("  Hash: ", script_hash(utxo.output.script))
 
 
-def add_all_scripts(context: ChainContext, repo: ScriptRepository, args: Namespace):
+def add_all_scripts(context: ChainContext, repo: ScriptRepository, args: Namespace) -> None:
     protocol = Protocol.load(args.plutus_blueprint)
     tx = repo.add_tx(
         [
@@ -166,7 +165,7 @@ def add_all_scripts(context: ChainContext, repo: ScriptRepository, args: Namespa
     handle_tx(tx, context, args)
 
 
-def clear_scripts(context: ChainContext, repo: ScriptRepository, args: Namespace):
+def clear_scripts(context: ChainContext, repo: ScriptRepository, args: Namespace) -> None:
     tx = repo.clear_tx()
 
     if not tx:

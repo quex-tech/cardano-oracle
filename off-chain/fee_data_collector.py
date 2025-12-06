@@ -1,17 +1,18 @@
 #!/usr/bin/env python
-from datetime import timedelta
 import os
 import sys
+from datetime import timedelta
+from pathlib import Path
 from time import sleep
 
 from dotenv import load_dotenv
-from pycardano import ExecutionUnits, ChainContext, Transaction, TransactionInput, Unit
+from pycardano import ChainContext, ExecutionUnits, Transaction, TransactionInput, Unit
 
 from http_action import create_http_action_with_proof
 from models import QuexResponse
 from networks import get_chain_context
 from oracles import OracleRepository
-from pending_requests import create_request, fulfill_request, RequestRepository
+from pending_requests import RequestRepository, create_request, fulfill_request
 from protocol import Protocol
 from signer_client import SignerClient
 from wallet import OperatorWallet
@@ -24,10 +25,13 @@ SIZES = [
     64,
 ]
 
-FILL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+FILL = (
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+)
 
 
-def main():
+def main() -> None:
     load_dotenv()
     context = get_chain_context()
     wallet = OperatorWallet.from_env("")
@@ -127,23 +131,19 @@ def main():
             )
         )
 
-        with open(f"{len(response.message.data.to_cbor())}_tx.bin", "wb") as file:
+        with Path(f"{len(response.message.data.to_cbor())}_tx.bin").open("wb") as file:
             file.write(fulfill_tx.to_cbor())
 
         # context.submit_tx(fulfill_tx)
         # wait_tx(context, fulfill_tx)
 
 
-def wait_tx(context: ChainContext, tx: Transaction):
+def wait_tx(context: ChainContext, tx: Transaction) -> None:
     first_output = tx.transaction_body.outputs[0]
     utxo = None
     while not utxo:
         utxo = next(
-            (
-                u
-                for u in context.utxos(first_output.address)
-                if u.input.transaction_id == tx.id
-            ),
+            (u for u in context.utxos(first_output.address) if u.input.transaction_id == tx.id),
             None,
         )
         sleep(5)
