@@ -13,8 +13,8 @@ import eth_utils
 from dotenv import load_dotenv
 from eth_keys import keys
 from pycardano import (
-    SCRIPT_HASH_SIZE,
     Address,
+    AssetName,
     ChainContext,
     MultiAsset,
     NativeScript,
@@ -144,29 +144,23 @@ class Oracle:
 @dataclass
 class OraclePool:
     currency_symbol: ScriptHash
-    token_name: bytes
+    token_name: AssetName
 
     @classmethod
     def from_script(cls, script: NativeScript, token_name: str):
-        return cls(currency_symbol=script.hash(), token_name=token_name.encode())
+        return cls(currency_symbol=script.hash(), token_name=AssetName(token_name.encode()))
 
     @classmethod
     def get_pools(cls, assets: MultiAsset):
-        asset_dict: dict = assets.to_primitive()
-        return [
-            cls(currency_symbol=ScriptHash(payload=cs), token_name=tn)
-            for cs in asset_dict
-            for tn in asset_dict[cs]
-            if len(cs) == SCRIPT_HASH_SIZE
-        ]
+        return [cls(currency_symbol=cs, token_name=tn) for cs in assets for tn in assets[cs]]
 
     @property
     def assets(self) -> MultiAsset:
-        return MultiAsset.from_primitive({bytes(self.currency_symbol): {self.token_name: 1}})
+        return MultiAsset.from_primitive({bytes(self.currency_symbol): {bytes(self.token_name): 1}})
 
     @property
     def id(self) -> bytes:
-        return bytes(self.currency_symbol) + self.token_name
+        return bytes(self.currency_symbol) + bytes(self.token_name)
 
     def pool_action_id(self, action_id: bytes) -> bytes:
         return sha256(self.id + action_id).digest()
@@ -212,7 +206,7 @@ class OracleRepository:
         plutus_oracle = oracle.to_plutus_data()
         pool = OraclePool(
             self.validator.currency_symbol,
-            sha256(plutus_oracle.to_cbor()).digest(),
+            AssetName(sha256(plutus_oracle.to_cbor()).digest()),
         )
         nw = self.context.network
 

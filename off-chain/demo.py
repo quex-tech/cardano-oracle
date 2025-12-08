@@ -107,9 +107,13 @@ def spend(context: ChainContext, args: argparse.Namespace) -> None:
         return
 
     responses = [
-        StoredResponse.from_utxo(utxo)
-        for utxo in context.utxos(args.response_address)
-        if currency_symbol in utxo.output.amount.multi_asset
+        sr
+        for sr in (
+            StoredResponse.try_from_utxo(utxo)
+            for utxo in context.utxos(args.response_address)
+            if currency_symbol in utxo.output.amount.multi_asset
+        )
+        if sr
     ]
     print("Responses found:                  ", len(responses))
     if not responses:
@@ -125,6 +129,9 @@ def spend(context: ChainContext, args: argparse.Namespace) -> None:
         key=lambda x: x.data.timestamp,
         default=None,
     )
+    if not response:
+        return
+
     print("Latest value:                     ", response.data.format_value())
     print("Latest timestamp:                 ", response.data.format_timestamp())
 
@@ -156,7 +163,7 @@ def spend(context: ChainContext, args: argparse.Namespace) -> None:
     handle_tx(signed_tx, context, args)
 
 
-def load_asset_class(path: Path) -> (ScriptHash, bytes):
+def load_asset_class(path: Path) -> tuple[ScriptHash, bytes]:
     with path.open(encoding="utf-8") as f:
         blueprint = json.loads(f.read())
 

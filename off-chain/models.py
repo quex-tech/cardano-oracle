@@ -128,7 +128,7 @@ class UnencryptedHTTPPrivatePatch:
         body: str | None,
         td_address: str,
     ):
-        parsed_url_suffix = urlparse(url_suffix)
+        parsed_url_suffix = urlparse(url_suffix or "")
         parsed_headers = [RequestHeader.from_str(header) for header in (headers or [])]
 
         parameters = [
@@ -177,7 +177,7 @@ class HTTPRequest(FixedPlutusData):
     @classmethod
     def from_parts(cls, method: str, url: str, headers: list[str], body: str | None):
         parsed_url = urlparse(url)
-        host = parsed_url.hostname.encode()
+        host = parsed_url.hostname.encode() if parsed_url.hostname else b""
         path = parsed_url.path.encode() if parsed_url.path else b"/"
 
         parsed_headers = [RequestHeader.from_str(header) for header in (headers or [])]
@@ -230,7 +230,7 @@ class HTTPActionWithProof(FixedPlutusData):
 @dataclass
 class FixedRawPlutusData(RawPlutusData):
     def to_primitive(self) -> Primitive:
-        def _dfs(obj: object) -> Primitive:
+        def _dfs(obj: object) -> Any:
             if isinstance(obj, list) and obj:
                 return IndefiniteList([_dfs(item) for item in obj])
             if isinstance(obj, dict):

@@ -14,7 +14,7 @@ from pycardano import (
     TransactionInput,
     TransactionOutput,
 )
-from pycardano.serialization import CBORBase, DeserializeException
+from pycardano.serialization import CBORBase, DeserializeException, RawCBOR
 
 
 def handle_tx(signed_tx: Transaction, context: ChainContext, args: Namespace) -> None:
@@ -144,6 +144,9 @@ def try_from_cbor(cls: type[CBORBase], payload: str | bytes) -> CBORBase | None:
 
 def try_from_tx_output(cls: type[CBORBase], output: TransactionOutput) -> CBORBase | None:
     if not output.datum:
+        return None
+
+    if not isinstance(output.datum, RawCBOR):
         return None
 
     return try_from_cbor(cls, output.datum.cbor)

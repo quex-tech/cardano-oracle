@@ -111,9 +111,11 @@ def create_http_action_with_proof(
 
     ephemeral_priv_key = SigningKey.generate(curve=SECP256k1)
 
+    encrypt_func = (lambda x: encrypt(x, td_vk, ephemeral_priv_key)) if td_vk else cannot_encrypt
+
     action = HTTPAction(
         request=request,
-        patch=patch.encrypt(encrypt_func=lambda x: encrypt(x, td_vk, ephemeral_priv_key)),
+        patch=patch.encrypt(encrypt_func=encrypt_func),
         filter=ByteString(filter_.encode()),
         schema=ByteString(schema.encode()),
     )
@@ -143,7 +145,7 @@ def encrypt(
     pub_key = priv_key.get_verifying_key()
 
     # Calculate the shared secret point using ECDH
-    shared_point = recipient_pub_key.pubkey.point * priv_key.privkey.secret_multiplier
+    shared_point = recipient_pub_key.pubkey.point * priv_key.privkey.secret_multiplier  # type: ignore
     shared_key = shared_point.to_bytes()
 
     # Derive the symmetric key using HKDF with SHA-256
@@ -164,3 +166,7 @@ def encrypt(
     tag = encryptor.tag
 
     return nonce + tag + ciphertext
+
+
+def cannot_encrypt(_: bytes) -> bytes:
+    raise MissingOracleKeyError

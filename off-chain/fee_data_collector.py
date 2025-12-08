@@ -6,7 +6,14 @@ from pathlib import Path
 from time import sleep
 
 from dotenv import load_dotenv
-from pycardano import ChainContext, ExecutionUnits, Transaction, TransactionInput, Unit
+from pycardano import (
+    ChainContext,
+    ExecutionUnits,
+    RedeemerMap,
+    Transaction,
+    TransactionInput,
+    Unit,
+)
 
 from http_action import create_http_action_with_proof
 from models import QuexResponse
@@ -35,8 +42,8 @@ def main() -> None:
     load_dotenv()
     context = get_chain_context()
     wallet = OperatorWallet.from_env("")
-    protocol = Protocol.load("plutus.json")
-    client = SignerClient(os.environ.get("ORACLE_URL"))
+    protocol = Protocol.load(Path("plutus.json"))
+    client = SignerClient(os.environ["ORACLE_URL"])
     pool_id = bytes.fromhex(
         "96dc3580d31151f2e8e50203f67e5c53f4eb630620cd695501339ba954657374526571756573744f7261636c65506f6f6c"
     )
@@ -95,7 +102,12 @@ def main() -> None:
             response,
         )
 
-        rv = fulfill_tx.transaction_witness_set.redeemer.values()
+        redeemer = fulfill_tx.transaction_witness_set.redeemer
+        if not isinstance(redeemer, RedeemerMap):
+            print("ERROR: Invalid redeemer map in transaction", file=sys.stderr)
+            continue
+
+        rv = redeemer.values()
         request_ex_units = next(
             (v.ex_units for v in rv if isinstance(v.data, Unit)),
             ExecutionUnits(0, 0),

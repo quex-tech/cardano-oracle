@@ -93,7 +93,7 @@ class ScriptRepository:
         utxos = self.context.utxos(self.wallet.library.addr(nw))
         return [u for u in utxos if u.output.script]
 
-    def add_tx(self, scripts: [PlutusScript]) -> Transaction | None:
+    def add_tx(self, scripts: list[PlutusScript]) -> Transaction | None:
         existing = [u.output.script for u in self.all()]
         scripts_to_add = [s for s in scripts if s not in existing]
         if not scripts_to_add:
@@ -116,7 +116,7 @@ class ScriptRepository:
             change_address=self.wallet.treasury.addr(nw),
         )
 
-    def clear_tx(self) -> Transaction:
+    def clear_tx(self) -> Transaction | None:
         nw = self.context.network
 
         builder = TransactionBuilder(self.context)
@@ -145,7 +145,8 @@ def list_scripts(_: ChainContext, repo: ScriptRepository, __: Namespace) -> None
     for utxo in repo.all():
         print(f"- UTxO:  {utxo.input.transaction_id}#{utxo.input.index}")
         print("  Type: ", type(utxo.output.script).__name__)
-        print("  Hash: ", script_hash(utxo.output.script))
+        if utxo.output.script:
+            print("  Hash: ", script_hash(utxo.output.script))
 
 
 def add_all_scripts(context: ChainContext, repo: ScriptRepository, args: Namespace) -> None:

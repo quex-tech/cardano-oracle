@@ -54,16 +54,6 @@ class StoredResponse:
     pool_action_id: bytes
 
     @classmethod
-    def from_utxo(cls, utxo: UTxO):
-        return cls(
-            utxo=utxo,
-            data=DataItem.from_cbor(utxo.output.datum.cbor),
-            pool_action_id=next(
-                iter(next(iter(utxo.output.amount.multi_asset.values())).keys())
-            ).payload,
-        )
-
-    @classmethod
     def try_from_utxo(cls, utxo: UTxO):
         data = try_from_tx_output(DataItem, utxo.output)
         if not data:
