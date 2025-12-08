@@ -32,7 +32,7 @@ from models import (
     QuexResponse,
 )
 from networks import get_chain_context
-from oracles import OracleRepository, RegisteredOracle
+from oracles import RegisteredOracle, find_oracle_by_pk_pool_id
 from protocol import Protocol, Validator
 from responses import ResponseRepository, ResponseTransactionBuilder
 from scripts import try_refer_to_script
@@ -45,7 +45,7 @@ from utils import (
     try_from_tx_output,
     tx_arg_parser,
 )
-from wallet import OperatorWallet
+from wallet import OperatorWallet, Wallet
 
 CARDANO_FEE_BUFFER = 1_000_000
 RELAYER_REWARD = 50_000
@@ -184,7 +184,6 @@ class StoredRequest:
 
 @dataclass
 class RequestRepository:
-    wallet: OperatorWallet
     context: ChainContext
     validator: Validator
 
@@ -208,16 +207,13 @@ class RequestRepository:
             None,
         )
 
-    def add_tx(
-        self,
-        request: OracleRequest,
-    ) -> Transaction:
+    def add_tx(self, request: OracleRequest, wallet: Wallet) -> Transaction:
         nw = self.context.network
         builder = TransactionBuilder(self.context)
-        builder.add_input_address(self.wallet.request_treasury.addr(nw))
+        builder.add_input_address(wallet.addr(nw))
 
         min_lovelace_change_utxo = min_lovelace_post_alonzo(
-            TransactionOutput(self.wallet.request_treasury.addr(nw), Value()),
+            TransactionOutput(wallet.addr(nw), Value()),
             self.context,
         )
         min_lovelace_request_utxo = min_lovelace_post_alonzo(
@@ -237,12 +233,17 @@ class RequestRepository:
         builder.add_output(tx_out)
 
         return builder.build_and_sign(
-            [self.wallet.request_treasury.sk],
-            change_address=self.wallet.request_treasury.addr(nw),
-            collateral_change_address=self.wallet.request_treasury.addr(nw),
+            [wallet.sk],
+            change_address=wallet.addr(nw),
+            collateral_change_address=wallet.addr(nw),
         )
 
-    def recycle_tx(self, tx_input: TransactionInput) -> Transaction | None:
+    def recycle_tx(
+        self,
+        tx_input: TransactionInput,
+        wallet: Wallet,
+        library_pkh: VerificationKeyHash | None = None,
+    ) -> Transaction | None:
         nw = self.context.network
         utxo = next(
             (u for u in self.context.utxos(self.validator.addr(nw)) if u.input == tx_input),
@@ -253,33 +254,38 @@ class RequestRepository:
             return None
 
         builder = TransactionBuilder(self.context)
-        builder.add_input_address(self.wallet.request_treasury.addr(nw))
+        builder.add_input_address(wallet.addr(nw))
         builder.add_script_input(
             utxo,
-            try_refer_to_script(self.context, self.wallet, self.validator.script),
+            try_refer_to_script(self.context, library_pkh, self.validator.script),
             redeemer=Redeemer(data=Unit()),
         )
 
         builder.add_output(
             TransactionOutput(
-                self.wallet.request_treasury.addr(nw),
+                wallet.addr(nw),
                 utxo.output.amount,
             )
         )
 
         return builder.build_and_sign(
-            [self.wallet.request_treasury.sk],
-            change_address=self.wallet.request_treasury.addr(nw),
-            collateral_change_address=self.wallet.request_treasury.addr(nw),
+            [wallet.sk],
+            change_address=wallet.addr(nw),
+            collateral_change_address=wallet.addr(nw),
             merge_change=True,
         )
 
-    def recycle_all_tx(self, limit: int) -> Transaction | None:
+    def recycle_all_tx(
+        self,
+        limit: int,
+        wallet: Wallet,
+        library_pkh: VerificationKeyHash | None = None,
+    ) -> Transaction | None:
         nw = self.context.network
 
         now = int((datetime.now(UTC)).timestamp())
 
-        owner_pkh = bytes(self.wallet.request_treasury.vk.hash())
+        owner_pkh = bytes(wallet.vk.hash())
         requests = [
             r
             for r in self.all()
@@ -290,8 +296,8 @@ class RequestRepository:
             return None
 
         builder = TransactionBuilder(self.context)
-        builder.add_input_address(self.wallet.request_treasury.addr(nw))
-        script = try_refer_to_script(self.context, self.wallet, self.validator.script)
+        builder.add_input_address(wallet.addr(nw))
+        script = try_refer_to_script(self.context, library_pkh, self.validator.script)
 
         amount = Value(0)
 
@@ -306,14 +312,15 @@ class RequestRepository:
 
         builder.add_output(
             TransactionOutput(
-                self.wallet.request_treasury.addr(nw),
+                wallet.addr(nw),
                 amount,
             )
         )
 
         return builder.build_and_sign(
-            [self.wallet.request_treasury.sk],
-            change_address=self.wallet.request_treasury.addr(nw),
+            [wallet.sk],
+            change_address=wallet.addr(nw),
+            collateral_change_address=wallet.addr(nw),
             merge_change=True,
             auto_validity_start_offset=0,
         )
@@ -321,11 +328,14 @@ class RequestRepository:
 
 def list_requests(
     context: ChainContext,
-    wallet: OperatorWallet,
+    _: OperatorWallet,
     protocol: Protocol,
-    _: Namespace,
+    __: Namespace,
 ) -> None:
-    repo = RequestRepository(wallet=wallet, context=context, validator=protocol.request_validator)
+    repo = RequestRepository(
+        context=context,
+        validator=protocol.request_validator,
+    )
     for request in repo.all():
         print(
             f"- UTxO:              {request.utxo.input.transaction_id}#{request.utxo.input.index}"
@@ -342,18 +352,21 @@ def run_add_request_command(
 ) -> None:
     request = create_request(
         context,
-        wallet,
         protocol.response_validator,
         parse_http_action_with_proof(args, args.oracle_pub_key),
         args.oracle_pool_id,
         args.max_response,
         args.ttl,
+        wallet.request_treasury.vk.hash(),
     )
 
     print_request(request, context.network)
 
-    repo = RequestRepository(wallet=wallet, context=context, validator=protocol.request_validator)
-    signed_tx = repo.add_tx(request)
+    repo = RequestRepository(
+        context=context,
+        validator=protocol.request_validator,
+    )
+    signed_tx = repo.add_tx(request, wallet.request_treasury)
 
     handle_tx(
         signed_tx=signed_tx,
@@ -364,14 +377,14 @@ def run_add_request_command(
 
 def create_request(
     context: ChainContext,
-    wallet: OperatorWallet,
     response_validator: Validator,
     action: HTTPActionWithProof,
     pool_id: bytes,
     max_response_size: int,
     ttl: timedelta,
+    owner_pkh: VerificationKeyHash,
 ) -> OracleRequest:
-    response_repo = ResponseRepository(wallet=wallet, context=context, validator=response_validator)
+    response_repo = ResponseRepository(context=context, validator=response_validator)
     pool_action_id = sha256(pool_id + action.action.action_id()).digest()
 
     after = datetime.now(UTC)
@@ -390,7 +403,7 @@ def create_request(
         ByteString(pool_action_id),
         int(after.timestamp()),
         int((after + ttl).timestamp()),
-        ByteString(bytes(wallet.request_treasury.vk.hash())),
+        ByteString(bytes(owner_pkh)),
         RELAYER_REWARD,
         context.protocol_param.coins_per_utxo_byte,
         ceil(max_cost),
@@ -403,8 +416,13 @@ def recycle_request(
     protocol: Protocol,
     args: Namespace,
 ) -> None:
-    repo = RequestRepository(wallet=wallet, context=context, validator=protocol.request_validator)
-    signed_tx = repo.recycle_tx(args.utxo)
+    repo = RequestRepository(
+        context=context,
+        validator=protocol.request_validator,
+    )
+    signed_tx = repo.recycle_tx(
+        args.utxo, wallet.request_treasury, library_pkh=wallet.library.vk.hash()
+    )
     if not signed_tx:
         print("Request is not found")
         return
@@ -418,8 +436,13 @@ def recycle_all_requests(
     protocol: Protocol,
     args: Namespace,
 ) -> None:
-    repo = RequestRepository(wallet=wallet, context=context, validator=protocol.request_validator)
-    signed_tx = repo.recycle_all_tx(args.limit)
+    repo = RequestRepository(
+        context=context,
+        validator=protocol.request_validator,
+    )
+    signed_tx = repo.recycle_all_tx(
+        args.limit, wallet.request_treasury, library_pkh=wallet.library.vk.hash()
+    )
     if not signed_tx:
         print("No expired requests are found")
         return
@@ -433,7 +456,10 @@ def run_fulfill_request_command(
     protocol: Protocol,
     args: Namespace,
 ) -> None:
-    repo = RequestRepository(wallet=wallet, context=context, validator=protocol.request_validator)
+    repo = RequestRepository(
+        context=context,
+        validator=protocol.request_validator,
+    )
     request = repo.find(args.utxo)
     if not request:
         print("Request is not found")
@@ -441,10 +467,12 @@ def run_fulfill_request_command(
 
     client = SignerClient(args.oracle_url)
     public_key = client.public_key()
-    oracle_repo = OracleRepository(
-        wallet=wallet, context=context, validator=protocol.single_oracle_pool_validator
+    oracle = find_oracle_by_pk_pool_id(
+        context,
+        public_key,
+        request.request.pool_id.value,
+        [wallet.oracles.vk.hash(), protocol.single_oracle_pool_validator.currency_symbol],
     )
-    oracle = oracle_repo.find_by_pub_key_pool_id(public_key, request.request.pool_id.value)
     if not oracle:
         print("Oracle is not registered on-chain")
         return
@@ -463,11 +491,12 @@ def run_fulfill_request_command(
 
     signed_tx = fulfill_request(
         context,
-        wallet,
+        wallet.treasury,
         protocol.response_validator,
         oracle,
         request,
         response,
+        library_pkh=wallet.library.vk.hash(),
     )
 
     change = next(
@@ -488,19 +517,20 @@ def run_fulfill_request_command(
 
 def fulfill_request(
     context: ChainContext,
-    wallet: OperatorWallet,
+    wallet: Wallet,
     response_validator: Validator,
     oracle: RegisteredOracle,
     request: StoredRequest,
     response: QuexResponse,
+    library_pkh: VerificationKeyHash | None = None,
 ) -> Transaction:
     nw = context.network
-    pool_action_id = oracle.pools[0].pool_action_id(response.message.action_id)
+    pool_action_id = oracle.pool.pool_action_id(response.message.action_id)
 
     builder = TransactionBuilder(context)
-    builder.add_input_address(wallet.treasury.addr(nw))
+    builder.add_input_address(wallet.addr(nw))
 
-    response_repo = ResponseRepository(wallet=wallet, context=context, validator=response_validator)
+    response_repo = ResponseRepository(context=context, validator=response_validator)
 
     response_tx_builder = ResponseTransactionBuilder(
         builder=builder, context=context, validator=response_validator
@@ -514,7 +544,7 @@ def fulfill_request(
 
     builder.add_script_input(
         request.utxo,
-        try_refer_to_script(context, wallet, response_validator.script),
+        try_refer_to_script(context, library_pkh, response_validator.script),
         redeemer=Redeemer(data=Unit()),
     )
 
@@ -523,23 +553,27 @@ def fulfill_request(
     min_cost = (
         RELAYER_REWARD
         + 0
-        + context.protocol_param.coins_per_utxo_byte * (274 + response_size)
+        + context.protocol_param.coins_per_utxo_byte
+        * (RESPONSE_DATUM_SIZE_INTERCEPT + response_size)
         - sum(r.utxo.output.amount.coin for r in existing_responses)
     )
     capped_min_cost = max(0, min(request.request.max_cost, min_cost))
     max_change = request.utxo.output.amount.coin - capped_min_cost
+    owner_addr = Address(
+        payment_part=VerificationKeyHash(request.request.owner_pkh.value), network=nw
+    )
     builder.add_output(
         TransactionOutput(
-            wallet.request_treasury.addr(nw),
+            owner_addr,
             Value(max_change),
         )
     )
 
     tx = builder.build_and_sign(
-        [wallet.treasury.sk],
-        change_address=wallet.treasury.addr(nw),
+        [wallet.sk],
+        change_address=wallet.addr(nw),
         merge_change=True,
-        collateral_change_address=wallet.treasury.addr(nw),
+        collateral_change_address=wallet.addr(nw),
         auto_ttl_offset=min(
             int(oracle.data.response_validity_period.total_seconds() * 0.9), 10_000
         ),
@@ -548,18 +582,16 @@ def fulfill_request(
     real_cost = min_cost + tx.transaction_body.fee
     capped_real_cost = max(0, real_cost)
     real_change = request.utxo.output.amount.coin - capped_real_cost
-    change_output = next(
-        o for o in builder.outputs if o.address == wallet.request_treasury.addr(nw)
-    )
+    change_output = next(o for o in builder.outputs if o.address == owner_addr)
     change_output.amount = Value(real_change)
 
     builder._should_estimate_execution_units = False
 
     return builder.build_and_sign(
-        [wallet.treasury.sk],
-        change_address=wallet.treasury.addr(nw),
+        [wallet.sk],
+        change_address=wallet.addr(nw),
         merge_change=True,
-        collateral_change_address=wallet.treasury.addr(nw),
+        collateral_change_address=wallet.addr(nw),
         auto_ttl_offset=min(
             int(oracle.data.response_validity_period.total_seconds() * 0.9), 10_000
         ),

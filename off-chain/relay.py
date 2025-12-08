@@ -9,7 +9,7 @@ from ecdsa import SECP256k1, VerifyingKey
 
 from http_action import http_action_arg_parser, parse_http_action_with_proof
 from networks import get_chain_context
-from oracles import OracleRepository
+from oracles import get_registered_oracles_at
 from protocol import Protocol
 from responses import ResponseRepository
 from signer_client import SignerClient
@@ -70,15 +70,15 @@ def main() -> None:
 
     context = get_chain_context()
     protocol = Protocol.load(args.plutus_blueprint)
-    oracle_repo = OracleRepository(
-        wallet=wallet, context=context, validator=protocol.single_oracle_pool_validator
-    )
     oracle = next(
         (
             o
-            for o in oracle_repo.registered()
+            for o in get_registered_oracles_at(
+                context,
+                [wallet.oracles.vk.hash(), protocol.single_oracle_pool_validator.currency_symbol],
+            )
             if o.data.public_key == public_key
-            if not args.oracle_pool_id or o.pools[0].id == args.oracle_pool_id
+            if not args.oracle_pool_id or o.pool.id == args.oracle_pool_id
         ),
         None,
     )
@@ -87,17 +87,19 @@ def main() -> None:
         return
 
     print("  UTxO:", f"{oracle.input.transaction_id}#{oracle.input.index}")
-    pool = oracle.pools[0]
+    pool = oracle.pool
     print("  Pool ID:", pool.id.hex())
     print("  Public key:", oracle.data.public_key.to_compressed_bytes().hex())
     print("  Resp. validity period:", oracle.data.response_validity_period)
     print("PoolAction ID:", pool.pool_action_id(response.message.action_id).hex())
 
-    response_repo = ResponseRepository(
-        wallet=wallet, context=context, validator=protocol.response_validator
-    )
+    response_repo = ResponseRepository(context=context, validator=protocol.response_validator)
 
-    handle_tx(signed_tx=response_repo.add_tx(response, oracle), context=context, args=args)
+    handle_tx(
+        signed_tx=response_repo.add_tx(response, oracle, wallet.treasury),
+        context=context,
+        args=args,
+    )
 
 
 if __name__ == "__main__":

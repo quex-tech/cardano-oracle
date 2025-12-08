@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 from pycardano import (
+    Address,
     ChainContext,
     NativeScript,
     PlutusScript,
@@ -13,6 +14,7 @@ from pycardano import (
     TransactionOutput,
     UTxO,
     Value,
+    VerificationKeyHash,
     min_lovelace_post_alonzo,
     script_hash,
 )
@@ -70,13 +72,16 @@ def main() -> None:
 
 def try_refer_to_script(
     context: ChainContext,
-    wallet: OperatorWallet,
+    library_pkh: VerificationKeyHash | None,
     script: NativeScript | PlutusScript,
 ) -> NativeScript | PlutusScript | UTxO:
+    if not library_pkh:
+        return script
+
     return next(
         (
             u
-            for u in context.utxos(wallet.library.addr(context.network))
+            for u in context.utxos(Address(payment_part=library_pkh, network=context.network))
             if u.output.script == script
         ),
         script,

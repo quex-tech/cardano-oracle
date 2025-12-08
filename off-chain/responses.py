@@ -22,7 +22,7 @@ from networks import get_chain_context
 from oracles import RegisteredOracle
 from protocol import Protocol, Validator
 from utils import blueprint_arg_parser, passphrase_arg_parser, try_from_tx_output
-from wallet import OperatorWallet
+from wallet import Wallet
 
 
 def main() -> None:
@@ -34,7 +34,6 @@ def main() -> None:
     args = parser.parse_args()
 
     repo = ResponseRepository(
-        wallet=OperatorWallet.from_env(args.passphrase),
         context=get_chain_context(),
         validator=Protocol.load(args.plutus_blueprint).response_validator,
     )
@@ -124,7 +123,6 @@ class ResponseTransactionBuilder:
 
 @dataclass
 class ResponseRepository:
-    wallet: OperatorWallet
     context: ChainContext
     validator: Validator
 
@@ -142,12 +140,14 @@ class ResponseRepository:
     def by_pool_action_id(self, pool_action_id: bytes) -> list[StoredResponse]:
         return [r for r in self.all() if r.pool_action_id == pool_action_id]
 
-    def add_tx(self, response: QuexResponse, oracle: RegisteredOracle) -> Transaction:
+    def add_tx(
+        self, response: QuexResponse, oracle: RegisteredOracle, wallet: Wallet
+    ) -> Transaction:
         nw = self.context.network
-        pool_action_id = oracle.pools[0].pool_action_id(response.message.action_id)
+        pool_action_id = oracle.pool.pool_action_id(response.message.action_id)
 
         builder = TransactionBuilder(self.context)
-        builder.add_input_address(self.wallet.treasury.addr(nw))
+        builder.add_input_address(wallet.addr(nw))
 
         response_tx_builder = ResponseTransactionBuilder(
             builder=builder, context=self.context, validator=self.validator
@@ -160,9 +160,9 @@ class ResponseRepository:
         builder.reference_inputs.add(oracle.input)
 
         return builder.build_and_sign(
-            [self.wallet.treasury.sk],
-            change_address=self.wallet.treasury.addr(nw),
-            collateral_change_address=self.wallet.treasury.addr(nw),
+            [wallet.sk],
+            change_address=wallet.addr(nw),
+            collateral_change_address=wallet.addr(nw),
             auto_ttl_offset=min(
                 int(oracle.data.response_validity_period.total_seconds() * 0.9), 10_000
             ),

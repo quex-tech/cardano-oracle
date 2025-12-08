@@ -18,7 +18,7 @@ from pycardano import (
 from http_action import create_http_action_with_proof
 from models import QuexResponse
 from networks import get_chain_context
-from oracles import OracleRepository
+from oracles import find_oracle_by_pk_pool_id
 from pending_requests import RequestRepository, create_request, fulfill_request
 from protocol import Protocol
 from signer_client import SignerClient
@@ -49,13 +49,16 @@ def main() -> None:
     )
     relayer = bytes(wallet.treasury.vk.hash())
     request_repo = RequestRepository(
-        wallet=wallet, context=context, validator=protocol.request_validator
-    )
-    oracle_repo = OracleRepository(
-        wallet=wallet, context=context, validator=protocol.single_oracle_pool_validator
+        context=context,
+        validator=protocol.request_validator,
     )
     public_key = client.public_key()
-    oracle = oracle_repo.find_by_pub_key_pool_id(public_key, pool_id)
+    oracle = find_oracle_by_pk_pool_id(
+        context,
+        public_key,
+        pool_id,
+        [wallet.oracles.vk.hash(), protocol.single_oracle_pool_validator.currency_symbol],
+    )
     if not oracle:
         print("No oracle", file=sys.stderr)
         return
@@ -77,14 +80,14 @@ def main() -> None:
 
         request = create_request(
             context,
-            wallet,
             protocol.response_validator,
             action,
             pool_id,
             max_response_size=128,
             ttl=timedelta(minutes=5),
+            owner_pkh=wallet.request_treasury.vk.hash(),
         )
-        add_tx = request_repo.add_tx(request)
+        add_tx = request_repo.add_tx(request, wallet.request_treasury)
         context.submit_tx(add_tx)
         wait_tx(context, add_tx)
         stored_request = request_repo.find(TransactionInput(add_tx.id, 0))
@@ -95,11 +98,12 @@ def main() -> None:
         response = client.query(action, relayer)
         fulfill_tx = fulfill_request(
             context,
-            wallet,
+            wallet.treasury,
             protocol.response_validator,
             oracle,
             stored_request,
             response,
+            library_pkh=wallet.library.vk.hash(),
         )
 
         redeemer = fulfill_tx.transaction_witness_set.redeemer

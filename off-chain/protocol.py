@@ -47,7 +47,7 @@ class Validator:
     script: PlutusScript
 
     def addr(self, nw: Network) -> Address:
-        return Address(plutus_script_hash(self.script), network=nw)
+        return Address(self.currency_symbol, network=nw)
 
     @property
     def currency_symbol(self) -> ScriptHash:
