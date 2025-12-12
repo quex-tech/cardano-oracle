@@ -74,6 +74,7 @@ select = [
     "C4",
     "C90",
     "COM",
+    "CPY",
     "DTZ",
     "E",
     "EM",

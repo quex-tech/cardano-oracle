@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2025 Quex Technologies
 from dataclasses import dataclass
 
 from dotenv import load_dotenv

@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2025 Quex Technologies
 import json
 import random
 from argparse import ArgumentParser, Namespace
