@@ -9,6 +9,7 @@ from eth_keys import keys
 from pycardano.serialization import ByteString
 
 from models import (
+    ANY_TD_ADDRESS,
     HTTPAction,
     HTTPActionWithProof,
     HTTPRequest,
@@ -102,7 +103,7 @@ def create_http_action_with_proof(
         td_address=(
             str(keys.PublicKey(td_vk.to_string()).to_checksum_address())
             if td_vk
-            else "0x0000000000000000000000000000000000000000"
+            else ANY_TD_ADDRESS
         ),
     )
 

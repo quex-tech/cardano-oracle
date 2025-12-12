@@ -24,7 +24,7 @@ dependencies = [
     "dotenv==0.9.9",
     "ecdsa==0.19.1",
     "ecpy==1.2.5",
-    "eth-hash==0.7.1",
+    "eth-hash[pycryptodome]==0.7.1",
     "eth-keys==0.7.0",
     "eth-typing==5.2.1",
     "eth-utils==5.3.1",
@@ -58,10 +58,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = [
-    "ruff>=0.14.8",
-    "ty>=0.0.1a32",
-]
+dev = ["ruff>=0.14.8", "ty>=0.0.1a32"]
 
 [tool.ruff]
 line-length = 100
@@ -117,6 +114,8 @@ ignore = [
     "PLR0913",
     "PLR0914",
     "PLR0917",
+    "S311",
+    "TD003",
     "UP006",
     "UP035",
 ]

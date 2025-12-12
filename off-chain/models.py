@@ -3,19 +3,22 @@
 from base64 import b64decode
 from collections.abc import Callable
 from dataclasses import dataclass, fields
+from hashlib import sha256
 from time import gmtime, strftime
 from types import UnionType
 from typing import Any, ClassVar, List, Union, get_args, get_origin
 from urllib.parse import parse_qsl, urlencode, urlparse
 
-from eth_utils import keccak
-from pycardano.plutus import PlutusData, RawPlutusData
-from pycardano.serialization import (
-    ByteString,
-    CBORTag,
+import eth_utils
+from pycardano import (
+    SCRIPT_HASH_SIZE,
+    VERIFICATION_KEY_HASH_SIZE,
     IndefiniteList,
+    PlutusData,
     Primitive,
+    RawPlutusData,
 )
+from pycardano.serialization import ByteString, CBORTag
 
 from utils import format_plutus_dict
 
@@ -29,6 +32,8 @@ HTTP_METHODS = {
 }
 
 CBOR_TAG_EXTENDED_CONSTR = 102
+
+ANY_TD_ADDRESS = "0x0000000000000000000000000000000000000000"
 
 
 class FixedPlutusData(PlutusData):
@@ -217,7 +222,7 @@ class HTTPAction(FixedPlutusData):
     filter: ByteString
 
     def action_id(self) -> bytes:
-        return keccak(self.to_cbor())
+        return eth_utils.keccak(self.to_cbor())
 
 
 @dataclass
@@ -316,8 +321,27 @@ class OracleRequest(FixedPlutusData):
     before: int
     owner_pkh: ByteString
     reward: int
-    coin_per_utxo_byte: int
+    coins_per_utxo_byte: int
     max_cost: int
+
+    def is_valid(self) -> bool:
+        if self.after < 0 or self.before < 0 or self.after >= self.before:
+            return False
+        if self.max_cost < 0:
+            return False
+        if len(self.pool_id.value) < SCRIPT_HASH_SIZE:
+            return False
+
+        td_address = self.action.action.patch.td_address.value
+        if not td_address.isascii() or not eth_utils.is_hex_address(td_address.decode()):
+            return False
+
+        if len(self.owner_pkh.value) != VERIFICATION_KEY_HASH_SIZE:
+            return False
+
+        action_id = self.action.action.action_id()
+        expected_pool_action_id = sha256(self.pool_id.value + action_id).digest()
+        return self.pool_action_id == expected_pool_action_id
 
     def format_after(self) -> str:
         return format_unixtime_seconds(self.after)

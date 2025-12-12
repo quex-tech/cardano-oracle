@@ -19,7 +19,7 @@ from http_action import create_http_action_with_proof
 from models import QuexResponse
 from networks import get_chain_context
 from oracles import find_oracle_by_pk_pool_id
-from pending_requests import RequestRepository, create_request, fulfill_request
+from pending_requests import RELAYER_REWARD, RequestRepository, create_request, fulfill_request
 from protocol import Protocol
 from signer_client import SignerClient
 from wallet import OperatorWallet
@@ -100,9 +100,11 @@ def main() -> None:
             context,
             wallet.treasury,
             protocol.response_validator,
+            protocol.request_validator,
             oracle,
             stored_request,
             response,
+            RELAYER_REWARD,
             library_pkh=wallet.library.vk.hash(),
         )
 

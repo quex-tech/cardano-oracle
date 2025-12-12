@@ -1,0 +1,16 @@
+{
+  "relayerReward": 50000,
+  "addressesByCurrencySymbol": {
+    "96dc3580d31151f2e8e50203f67e5c53f4eb630620cd695501339ba9": [
+      "addr_test1vpj8dczy5483zxuusllu39lf6e3mnwpcjt2xx9knps25r2quxnvlj"
+    ],
+    "b0344bbbe9caca56dabfcb583ce8d9038abdc80093badfc319d21b7f": [
+      "addr_test1wzcrgjama89v54k6hl94s08gmypc40wgqzfm4h7rr8fpklcjvqcnv"
+    ]
+  },
+  "urlsByPublicKey": {
+    "02a39e03be50578731055b64c6a20287fc6f55c3411de14e44fb94ad4d51d04260": [
+      "http://10.13.192.131:8080"
+    ]
+  }
+}

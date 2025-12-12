@@ -493,9 +493,11 @@ def run_fulfill_request_command(
         context,
         wallet.treasury,
         protocol.response_validator,
+        protocol.request_validator,
         oracle,
         request,
         response,
+        RELAYER_REWARD,
         library_pkh=wallet.library.vk.hash(),
     )
 
@@ -515,20 +517,30 @@ def run_fulfill_request_command(
     handle_tx(signed_tx=signed_tx, context=context, args=args)
 
 
+class InsufficientFundsError(Exception):
+    pass
+
+
+class InsufficientRewardError(Exception):
+    pass
+
+
 def fulfill_request(
     context: ChainContext,
     wallet: Wallet,
     response_validator: Validator,
+    request_validator: Validator,
     oracle: RegisteredOracle,
     request: StoredRequest,
     response: QuexResponse,
+    relayer_reward: int,
     library_pkh: VerificationKeyHash | None = None,
 ) -> Transaction:
     nw = context.network
     pool_action_id = oracle.pool.pool_action_id(response.message.action_id)
-
+    our_addr = wallet.addr(nw)
     builder = TransactionBuilder(context)
-    builder.add_input_address(wallet.addr(nw))
+    builder.add_input_address(our_addr)
 
     response_repo = ResponseRepository(context=context, validator=response_validator)
 
@@ -544,14 +556,14 @@ def fulfill_request(
 
     builder.add_script_input(
         request.utxo,
-        try_refer_to_script(context, library_pkh, response_validator.script),
+        try_refer_to_script(context, library_pkh, request_validator.script),
         redeemer=Redeemer(data=Unit()),
     )
 
     response_size = len(response.message.data.to_cbor())
 
     min_cost = (
-        RELAYER_REWARD
+        relayer_reward
         + 0
         + context.protocol_param.coins_per_utxo_byte
         * (RESPONSE_DATUM_SIZE_INTERCEPT + response_size)
@@ -562,21 +574,23 @@ def fulfill_request(
     owner_addr = Address(
         payment_part=VerificationKeyHash(request.request.owner_pkh.value), network=nw
     )
-    builder.add_output(
-        TransactionOutput(
-            owner_addr,
-            Value(max_change),
-        )
+    change_output = TransactionOutput(
+        owner_addr,
+        Value(max_change),
     )
+    if change_output.amount.coin < min_lovelace_post_alonzo(change_output, context):
+        raise InsufficientFundsError
+
+    builder.add_output(change_output)
+
+    auto_ttl_offset = min(int(oracle.data.response_validity_period.total_seconds() * 0.9), 10_000)
 
     tx = builder.build_and_sign(
         [wallet.sk],
-        change_address=wallet.addr(nw),
+        change_address=our_addr,
         merge_change=True,
-        collateral_change_address=wallet.addr(nw),
-        auto_ttl_offset=min(
-            int(oracle.data.response_validity_period.total_seconds() * 0.9), 10_000
-        ),
+        collateral_change_address=our_addr,
+        auto_ttl_offset=auto_ttl_offset,
     )
 
     real_cost = min_cost + tx.transaction_body.fee
@@ -584,18 +598,30 @@ def fulfill_request(
     real_change = request.utxo.output.amount.coin - capped_real_cost
     change_output = next(o for o in builder.outputs if o.address == owner_addr)
     change_output.amount = Value(real_change)
+    if change_output.amount.coin < min_lovelace_post_alonzo(change_output, context):
+        raise InsufficientFundsError
 
     builder._should_estimate_execution_units = False
 
-    return builder.build_and_sign(
+    tx = builder.build_and_sign(
         [wallet.sk],
-        change_address=wallet.addr(nw),
+        change_address=our_addr,
         merge_change=True,
-        collateral_change_address=wallet.addr(nw),
-        auto_ttl_offset=min(
-            int(oracle.data.response_validity_period.total_seconds() * 0.9), 10_000
-        ),
+        collateral_change_address=our_addr,
+        auto_ttl_offset=auto_ttl_offset,
     )
+
+    spent_ada = sum(
+        utxo.output.amount.coin for utxo in builder.inputs if utxo.output.address == our_addr
+    )
+    received_ada = sum(
+        out.amount.coin for out in tx.transaction_body.outputs if out.address == our_addr
+    )
+    reward = received_ada - spent_ada
+    if reward < relayer_reward:
+        raise InsufficientRewardError
+
+    return tx
 
 
 def print_request(request: OracleRequest, network: Network, indent: str = "") -> None:
@@ -616,7 +642,7 @@ def print_request(request: OracleRequest, network: Network, indent: str = "") ->
     print(f"{indent}Valid Before:      {request.format_before()}")
     print(
         f"{indent}Fee:               min("
-        f"({request.coin_per_utxo_byte} * ({RESPONSE_DATUM_SIZE_INTERCEPT} + size(response))"
+        f"({request.coins_per_utxo_byte} * ({RESPONSE_DATUM_SIZE_INTERCEPT} + size(response))"
         f" + {request.reward} + fee"
         f", {request.max_cost})"
     )
