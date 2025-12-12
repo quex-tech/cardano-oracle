@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2025 Quex Technologies
 import argparse
 from dataclasses import dataclass
 from typing import List
@@ -6,7 +8,6 @@ from typing import List
 from pycardano import (
     ChainContext,
     MultiAsset,
-    PlutusData,
     Redeemer,
     Transaction,
     TransactionBuilder,

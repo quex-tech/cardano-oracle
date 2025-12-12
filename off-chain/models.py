@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2025 Quex Technologies
 from base64 import b64decode
 from dataclasses import dataclass
 from time import gmtime, strftime

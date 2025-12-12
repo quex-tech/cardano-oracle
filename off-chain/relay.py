@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2025 Quex Technologies
 import argparse
 import os
 
@@ -7,7 +9,6 @@ from Crypto.Hash import SHA256
 from Crypto.Protocol.KDF import HKDF
 from dotenv import load_dotenv
 from ecdsa import SECP256k1, SigningKey, VerifyingKey
-from eth_keys import keys
 from pycardano.serialization import ByteString
 
 from models import (

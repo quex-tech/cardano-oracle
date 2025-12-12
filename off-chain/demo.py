@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2025 Quex Technologies
 import argparse
 import json
 from datetime import datetime, timedelta, timezone

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2025 Quex Technologies
 from argparse import ArgumentParser, Namespace
 import json
 from typing import List

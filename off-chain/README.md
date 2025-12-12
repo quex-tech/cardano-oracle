@@ -217,3 +217,9 @@ Get the funds back to the treasury:
 ```
 
 There must be a fresh response at the address (created less than about 20 minutes ago). If the response has expired, `./relay.py` a new one.
+
+## License
+
+This project is licensed under the [Apache License 2.0](LICENSE).
+
+See the [NOTICE](NOTICE) file for additional copyright and license information.
