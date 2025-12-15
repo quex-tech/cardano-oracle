@@ -362,7 +362,6 @@ def main() -> None:
     )
 
     print(f"tx:                 {c.tx:15.7f}")
-    print(f"tx:                 {pp.min_fee_constant:15.7f}")
     print(f"datum:              {c.datum:15.7f}")
     print(f"step:               {pp.price_step:15.7f}")
     print(f"mem:                {pp.price_mem:15.7f}")

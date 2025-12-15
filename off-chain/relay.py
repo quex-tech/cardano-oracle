@@ -70,12 +70,13 @@ def main() -> None:
 
     context = get_chain_context()
     protocol = Protocol.load(args.plutus_blueprint)
+    nw = context.network
     oracle = next(
         (
             o
             for o in get_registered_oracles_at(
                 context,
-                [wallet.oracles.vk.hash(), protocol.single_oracle_pool_validator.currency_symbol],
+                [wallet.oracles.addr(nw), protocol.single_oracle_pool_validator.addr(nw)],
             )
             if o.data.public_key == public_key
             if not args.oracle_pool_id or o.pool.id == args.oracle_pool_id

@@ -70,7 +70,7 @@ def parse_tx_input(tx_input: str) -> TransactionInput:
 
 def load_scripts(path: Path) -> Mapping[str, PlutusScript]:
     with path.open(encoding="utf-8") as f:
-        blueprint = json.loads(f.read())
+        blueprint = json.load(f)
 
     version = int(blueprint["preamble"]["plutusVersion"].strip("v"))
 

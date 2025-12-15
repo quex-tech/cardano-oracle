@@ -19,6 +19,14 @@ To deactivate the virtual environment later, type
 deactivate
 ```
 
+## Run tests
+
+Execute all unit tests with:
+
+```sh
+./run_tests.sh
+```
+
 ## Environment Variables
 
 + `WALLET_MNEMONIC`: mnemonic phrase for a wallet. Can be generated with `./wallet generate --passphrase <passphrase>`.

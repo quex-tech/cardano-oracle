@@ -469,11 +469,12 @@ def run_fulfill_request_command(
 
     client = SignerClient(args.oracle_url)
     public_key = client.public_key()
+    nw = context.network
     oracle = find_oracle_by_pk_pool_id(
         context,
         public_key,
         request.request.pool_id.value,
-        [wallet.oracles.vk.hash(), protocol.single_oracle_pool_validator.currency_symbol],
+        [wallet.oracles.addr(nw), protocol.single_oracle_pool_validator.addr(nw)],
     )
     if not oracle:
         print("Oracle is not registered on-chain")

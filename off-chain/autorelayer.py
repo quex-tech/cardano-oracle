@@ -18,9 +18,7 @@ from pycardano import (
     Address,
     ChainContext,
     PyCardanoException,
-    ScriptHash,
     Transaction,
-    VerificationKeyHash,
 )
 
 from models import ANY_TD_ADDRESS, HTTPActionWithProof, OracleRequest, QuexResponse
@@ -44,13 +42,13 @@ from wallet import OperatorWallet
 
 @dataclass
 class Config:
-    pkhs_by_cs: Mapping[bytes, list[VerificationKeyHash | ScriptHash]]
+    addrs_by_cs: Mapping[bytes, list[Address]]
     urls_by_pk: Mapping[bytes, list[str]]
     relayer_reward: int
 
-    def get_pkhs(self, pool_id: bytes) -> list[VerificationKeyHash | ScriptHash]:
+    def get_addrs(self, pool_id: bytes) -> list[Address]:
         currency_symbol = pool_id[:SCRIPT_HASH_SIZE]
-        return self.pkhs_by_cs.get(currency_symbol, [])
+        return self.addrs_by_cs.get(currency_symbol, [])
 
     def get_urls(self, key: eth_keys.keys.PublicKey) -> list[str]:
         return self.urls_by_pk.get(key.to_compressed_bytes(), [])
@@ -60,10 +58,8 @@ class Config:
         with path.open(encoding="utf-8") as f:
             config = json.load(f)
 
-        pkhs_by_cs = {
-            bytes.fromhex(cs_hex): [
-                h for h in (Address.decode(addr).payment_part for addr in addrs) if h
-            ]
+        addrs_by_cs = {
+            bytes.fromhex(cs_hex): [Address.decode(addr) for addr in addrs]
             for cs_hex, addrs in config["addressesByCurrencySymbol"].items()
         }
 
@@ -73,7 +69,7 @@ class Config:
 
         relayer_reward = config["relayerReward"]
 
-        return cls(pkhs_by_cs, urls_by_pk, relayer_reward)
+        return cls(addrs_by_cs, urls_by_pk, relayer_reward)
 
 
 class RequestHandlingError(Exception):
@@ -218,13 +214,13 @@ def get_suitable_oracles(
     request: OracleRequest,
     config: Config,
 ) -> list[RegisteredOracle]:
-    pkhs = config.get_pkhs(request.pool_id.value)
-    if not pkhs:
+    addrs = config.get_addrs(request.pool_id.value)
+    if not addrs:
         return []
 
     oracles: list[RegisteredOracle] = [
         o
-        for o in get_registered_oracles_at(context, pkhs)
+        for o in get_registered_oracles_at(context, addrs)
         if o.pool.id == request.pool_id.value
         if config.get_urls(o.data.public_key)
     ]

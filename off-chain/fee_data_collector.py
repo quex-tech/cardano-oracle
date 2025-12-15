@@ -55,11 +55,12 @@ def main() -> None:
         validator=protocol.request_validator,
     )
     public_key = client.public_key()
+    nw = context.network
     oracle = find_oracle_by_pk_pool_id(
         context,
         public_key,
         pool_id,
-        [wallet.oracles.vk.hash(), protocol.single_oracle_pool_validator.currency_symbol],
+        [wallet.oracles.addr(nw), protocol.single_oracle_pool_validator.addr(nw)],
     )
     if not oracle:
         print("No oracle", file=sys.stderr)

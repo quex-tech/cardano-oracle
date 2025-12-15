@@ -1,9 +1,9 @@
-#!/bin/bash
+#!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2025 Quex Technologies
-set -euo pipefail
+set -eu
 
-ROOT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+ROOT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 
 docker run \
   --rm \

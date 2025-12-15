@@ -261,12 +261,12 @@ def find_oracle_by_pk_pool_id(
     context: ChainContext,
     public_key: keys.PublicKey,
     pool_id: bytes,
-    addr_payment_part_list: list[VerificationKeyHash | ScriptHash],
+    addr_list: list[Address],
 ) -> RegisteredOracle | None:
     return next(
         (
             o
-            for o in get_registered_oracles_at(context, addr_payment_part_list)
+            for o in get_registered_oracles_at(context, addr_list)
             if o.data.public_key == public_key
             if o.pool.id == pool_id
         ),
@@ -275,11 +275,10 @@ def find_oracle_by_pk_pool_id(
 
 
 def get_registered_oracles_at(
-    context: ChainContext, addr_payment_part_list: list[VerificationKeyHash | ScriptHash]
+    context: ChainContext, addr_list: list[Address]
 ) -> Iterable[RegisteredOracle]:
-    for addr_payment_part in addr_payment_part_list:
-        addr = Address(payment_part=addr_payment_part, network=context.network)
-        for utxo in context.utxos(addr):
+    for addr in addr_list:
+        for utxo in context.utxos(Address(addr.payment_part, addr.staking_part, context.network)):
             pools = OraclePool.get_pools(utxo.output.amount.multi_asset)
             if not pools:
                 continue
@@ -299,9 +298,8 @@ def get_registered_oracles_at(
 def list_oracles(
     context: ChainContext, wallet: OperatorWallet, validator: Validator, __: argparse.Namespace
 ) -> None:
-    for oracle in get_registered_oracles_at(
-        context, [wallet.oracles.vk.hash(), validator.currency_symbol]
-    ):
+    nw = context.network
+    for oracle in get_registered_oracles_at(context, [wallet.oracles.addr(nw), validator.addr(nw)]):
         pub_key = oracle.data.public_key.to_compressed_bytes().hex()
         utxo = f"{oracle.input.transaction_id}#{oracle.input.index}"
         pool = oracle.pool
