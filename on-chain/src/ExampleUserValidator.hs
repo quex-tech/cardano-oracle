@@ -51,7 +51,7 @@ type OracleResponse = Integer
 
 {-# INLINEABLE isResponseGood #-}
 isResponseGood :: OracleResponse -> Bool
-isResponseGood datum = datum > 50000000
+isResponseGood datum = datum > 40000000
 
 {-# INLINEABLE exampleUserTypedValidator #-}
 exampleUserTypedValidator :: AssetClass -> ScriptContext -> Bool
