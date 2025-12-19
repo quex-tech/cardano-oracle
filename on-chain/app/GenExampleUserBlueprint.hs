@@ -33,7 +33,7 @@ currencySymbol :: String
 currencySymbol = "6737bfc42d5874ea76d4e6cd4893864c8f09d9cae165ff2a62f29b1a"
 
 poolActionID :: String
-poolActionID = "f81a7a8322cb0b2367e1699515e5f7c06a5bf06d9758e88c44e993ff52effa20"
+poolActionID = "361b4aff73c84d3dcaf6178ff36e0ae3e1833273a726fb9642bfde3a12f84f41"
 
 myContractBlueprint :: ContractBlueprint
 myContractBlueprint =
