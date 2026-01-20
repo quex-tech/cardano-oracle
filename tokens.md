@@ -59,7 +59,7 @@ Publishing is performed using:
 
 - a reference input UTxO containing the pool token + `(TDPublicKey, ResponseValidityPeriod)`
 - a TD response payload
-- the derived `PoolActionID
+- the derived `PoolActionID`
 
 The publisher must:
 
