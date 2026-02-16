@@ -1,5 +1,6 @@
 {
   "relayerReward": 50000,
+  "requestUtxoBlacklist": [],
   "addressesByCurrencySymbol": {
     "96dc3580d31151f2e8e50203f67e5c53f4eb630620cd695501339ba9": [
       "addr_test1vpj8dczy5483zxuusllu39lf6e3mnwpcjt2xx9knps25r2quxnvlj"

@@ -45,6 +45,7 @@ class Config:
     addrs_by_cs: Mapping[bytes, list[Address]]
     urls_by_pk: Mapping[bytes, list[str]]
     relayer_reward: int
+    blacklisted_requests: set[str]
 
     def get_addrs(self, pool_id: bytes) -> list[Address]:
         currency_symbol = pool_id[:SCRIPT_HASH_SIZE]
@@ -52,6 +53,9 @@ class Config:
 
     def get_urls(self, key: eth_keys.keys.PublicKey) -> list[str]:
         return self.urls_by_pk.get(key.to_compressed_bytes(), [])
+
+    def is_blacklisted(self, request_id: str) -> bool:
+        return request_id in self.blacklisted_requests
 
     @classmethod
     def load(cls, path: Path):
@@ -68,8 +72,9 @@ class Config:
         }
 
         relayer_reward = config["relayerReward"]
+        blacklisted_requests = set(config.get("requestUtxoBlacklist", []))
 
-        return cls(addrs_by_cs, urls_by_pk, relayer_reward)
+        return cls(addrs_by_cs, urls_by_pk, relayer_reward, blacklisted_requests)
 
 
 class RequestHandlingError(Exception):
@@ -115,6 +120,8 @@ def main() -> None:
 
     for request in requests:
         request_id = f"{request.utxo.input.transaction_id}#{request.utxo.input.index}"
+        if config.is_blacklisted(request_id):
+            continue
         try:
             handle_request(
                 context=context,
