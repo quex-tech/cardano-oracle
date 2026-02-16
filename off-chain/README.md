@@ -223,6 +223,34 @@ Get the funds back to the treasury:
 
 There must be a fresh response at the address (created less than about 20 minutes ago). If the response has expired, `./relay.py` a new one.
 
+### Create and manage pending requests
+
+Create request command:
+
+```sh
+./pending_requests.py add "https://api.binance.com/api/v3/depth?symbol=ADAUSDT&limit=1" \
+  --filter "[.lastUpdateId] + ([.bids] | map(map(map(tonumber*100000000|floor))))" \
+  "(uint,(uint,uint)[])" \
+  --ttl 60 \
+  --max-response 256 \
+  --submit
+```
+
+Useful flags:
+
+- `--ttl <minutes>`: request validity window (default 60)
+- `--max-response <bytes>`: response size budget used to compute `reqMaxCost`
+- `--oracle-pool-id <hex>`: override pool from `.env`
+- `--oracle-pub-key <hex>`: required if using encrypted request fields (`--enc-url-suffix`, `--enc-header`, `--enc-data`)
+- `--view-tx`: preview tx body
+- omit `--submit` for dry run
+
+After creating:
+
+- list pending requests with `./pending_requests.py list`
+- fulfill one with `./pending_requests.py fulfill <tx_hash>#<index> --submit`
+- recycle expired with `./pending_requests.py recycle <tx_hash>#<index> --submit`
+
 ## License
 
 This project is licensed under the [Apache License 2.0](LICENSE).
