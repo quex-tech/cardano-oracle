@@ -536,3 +536,174 @@ The `README.md` covers build instructions and high-level off-chain usage. There 
 CIP-52 §2 expects all four to exist as a prerequisite to a competent audit. Their absence is itself an Informational finding.
 
 **Recommendation:** Add `docs/ARCHITECTURE.md` covering the points above. The threat model in §3 of this audit can seed it.
+
+---
+
+## 5. Test evidence
+
+### 5.1 What was run
+
+**Nothing.** No on-chain tests were executed during this audit because the build requires the IOG `devx-devcontainer:x86_64-linux.ghc96-iog` Docker image and `cabal` toolchain that fall outside this session's scope. The existing test suite (`on-chain/test/Main.hs`) covers only `serialiseData` fixtures (29 cases), `unsafeFromBuiltinData` round-trips (4 cases), and a single ECDSA signature fixture; none of these exercise the validators audited above.
+
+`cabal outdated` and a comparison of `cabal.project.freeze` against [IntersectMBO/plutus security advisories](https://github.com/IntersectMBO/plutus/security/advisories) were not performed for the same reason — re-run before the next release-candidate build.
+
+### 5.2 Required regression suite
+
+Per CIP-52 §8, every finding requires a paired test. Consolidated below:
+
+| Finding | Test required |
+|---|---|
+| [REQ-C](#req-c-multiple-satisfaction-in-existschangeoutput) | Bundle 2 same-owner requests with one merged refund output; assert spend fails. **Highest priority.** |
+| [P7B-1](#p7b-1-no-on-chain-tee-attestation-trust-collapses-to-ecdsa-key-custody) | Architectural; document in spec rather than gate via test. |
+| [REQ-A](#req-a-validator-trivially-passes-for-purposes-without-an-inline-datum) | Create request UTxO with datum-hash (no inline); attempt spend with arbitrary redeemer; assert fails. |
+| [RESP-2](#resp-2-getoracle-trusts-any-reference-input-with-a-single-non-ada-token) | Build response tx with reference input at non-pool address; assert validator rejects. |
+| [REQ-D](#req-d-minchange--0-short-circuits-the-owner-payment-check) | `cappedCost == requestCoin` with no owner output; document or reject per spec choice. |
+| [LIB-1](#lib-1-reference-script-library-is-key-controlled-not-script-controlled) | Operational; runbook test, not on-chain. |
+| [REQ-B](#req-b-request-datum-fields-not-validated) | Per-field: violate each bound (`maxCost < 0`, `coinPerUTxOByte ≤ 0`, `after > before`, oversize action); assert validator rejects. |
+| [RESP-A](#resp-a-untyped-validator-does-not-discriminate-script-purpose) | Submit tx under Rewarding / Certifying / Voting / Proposing purposes; assert each fails. |
+| [SOPV-1](#sopv-1-no-upper-bound-on-response-validity-period) | Pool registration with `responseValidityPeriod = MAX_TTL_MS + 1`; assert validator rejects. |
+| [REQ-MAGIC-1](#req-magic-1-magic-number-274-uxto-overhead) | Style; no test (add to release runbook). |
+| [TEST-1](#test-1-test-suite-has-no-validator-level-tests) | Meta — adopt `plutus-simple-model`. |
+| [EUS-1](#eus-1-exampleuservalidator-uses-unsafefrombuiltindata-on-reference-input) | Spend example-user UTxO with malformed response datum; assert validator's failure trace is informative. |
+| [RESP-B](#resp-b-relayer-pkh-check-excludes-multisig-and-script-witnesses) | Documentation only. |
+| [REQ-ERR](#req-err-error--in-mid-validator-paths-produces-no-trace) | After fix: assert each failure path emits a distinct trace string. |
+| [P9-1](#p9-1-reqpoolid-in-the-request-datum-is-unused-on-chain) | If fix adopted: build request with mismatched `(reqPoolID, reqPoolActionID)`; assert rejects. |
+| [DOC-1](#doc-1-architecture-document-and-state-machine-diagrams-missing) | Documentation only. |
+
+### 5.3 Recommended test infrastructure
+
+Add `plutus-simple-model ^>=3.0` to `quex-oracle.cabal`'s `test-suite quex-oracle-test`. Re-organise `on-chain/test/Main.hs` into:
+
+```
+test/
+├── Main.hs                          -- runner + existing fixtures
+├── Unit/
+│   ├── OracleRequestSpec.hs         -- per-finding tests
+│   ├── OracleResponseSpec.hs
+│   ├── SingleOraclePoolSpec.hs
+│   └── ExampleUserSpec.hs
+└── Property/
+    └── ContractModelSpec.hs         -- quickcheck-contractmodel
+```
+
+Each `Unit/*Spec.hs` runs the validator in a mock chain with crafted tx contexts. The `Property/ContractModelSpec.hs` exercises the request → response → refund state machine under random schedules.
+
+`cabal test` should be wired into the `compile-contracts.sh` driver so the test gate runs on every script regeneration.
+
+---
+
+## 6. Off-chain TX-format conformance (CIP-52 §5, §7)
+
+A best-effort check that the off-chain Python TX builders construct transactions matching the on-chain expectations.
+
+| Validator expectation | Off-chain enforcement | Status |
+|---|---|---|
+| Request UTxO carries **inline** datum (`SpendingScript _ Just`) | `pending_requests.py` builds `TransactionOutput(..., datum=...)` which PyCardano serialises as inline by default. | OK *(conditional on PyCardano version; see REQ-A)* |
+| Response output address == `OracleResponseValidator` script address | `responses.py:115` uses `self.validator.addr(nw)` derived from `plutus_script_hash`. | OK |
+| Response output asset name == `sha256(poolID ++ actionID)` | `oracles.py:163` `pool_action_id = sha256(self.id + action_id)`. | OK |
+| Response output contains exactly `(ada, currency:poolActionID)` | `responses.py:117` `Value(2_000_000, assets)` with `assets` containing only `{currency: {tn: 1}}`. | OK |
+| Reference input for `getOracle` is a single pool NFT | `responses.py:160` `builder.reference_inputs.add(oracle.input)`. | OK *(but see RESP-2 — no on-chain address check)* |
+| Relayer's pkh ∈ `txInfoSignatories` | `responses.py:163` `build_and_sign([wallet.sk], ...)` includes the relayer's signing key. | OK |
+| Request expiry refund branch needs `owner` signature | `pending_requests.py recycle …` signs with `wallet.treasury.sk`; assumed to match `reqOwner`. | OK *(needs explicit assertion in code)* |
+| `Validator.addr()` constructs script-only address | `protocol.py:50` `Address(self.currency_symbol, network=nw)` — no staking part. | **Gap: MLabs-11 / Plutonomicon-3 staking control** |
+
+### 6.1 New finding from TX-format review
+
+#### STAKE-1 — Script addresses have no staking credential
+
+**Severity:** Low
+**Category:** MLabs-11 / Plutonomicon-3
+**Location:** `off-chain/protocol.py:50`, `off-chain/oracles.py` and similar
+
+```python
+def addr(self, nw: Network) -> Address:
+    return Address(self.currency_symbol, network=nw)
+```
+
+`Address(payment_part, network=…)` with no `staking_part` builds a script address whose staking part is `None`. ADA locked at these addresses earns no staking rewards. For an MVP this is acceptable, but as TVL grows the lost rewards become non-trivial.
+
+Adding a stake credential creates two follow-on questions:
+
+1. **Whose stake credential?** A pubkey credential under the operator's control concentrates reward extraction in the operator. A script credential that delegates programmatically (always delegate to pool X) is the safer pattern but requires another validator.
+2. **Stake-key withdrawal authority** — if the stake credential is a *pubkey*, rewards can be withdrawn by that key independent of the spending logic. Document and audit this separately.
+
+**Recommendation:** Decide the policy explicitly. For the v1 launch, document "script addresses currently have no stake delegation — locked ADA earns no rewards." For v2, introduce a stake-credential strategy.
+
+---
+
+## 7. Build reproducibility (CIP-52 §9)
+
+- `on-chain/cabal.project` pins `index-state` to `2025-03-05T09:09:31Z` for both `hackage.haskell.org` and `cardano-haskell-packages`. **OK.**
+- `quex-oracle.cabal` pins `plutus-core ^>=1.42.0.0`, `plutus-ledger-api ^>=1.42.0.0`, `plutus-tx ^>=1.42.0.0`. **OK** (^>= caret is consistent with IOG's release cadence).
+- `cabal.project.freeze` — **not present in the repo**. Adding it would make the build fully reproducible byte-for-byte.
+- `compile-contracts.sh` runs in `ghcr.io/input-output-hk/devx-devcontainer:x86_64-linux.ghc96-iog`. The image tag is *not* version-pinned (`ghc96-iog`, no digest). A future image rebuild upstream could change the script hash silently.
+
+#### BUILD-1 — `cabal.project.freeze` missing; devcontainer tag not digest-pinned
+
+**Severity:** Informational
+**Category:** CIP-52-§9
+**Recommendation:** Generate `cabal.project.freeze` and commit it. Pin the devcontainer to a digest (`ghcr.io/input-output-hk/devx-devcontainer@sha256:…`). Add a CI check that re-builds and asserts the four validator hashes are unchanged.
+
+---
+
+## 8. CIP-52 coverage matrix
+
+How this audit covered each section of CIP-52:
+
+| CIP-52 § | Section | Coverage in this report |
+|---|---|---|
+| §1 | Scope | [§1](#1-scope) |
+| §2 | Documentation review | [DOC-1](#doc-1-architecture-document-and-state-machine-diagrams-missing) |
+| §3 | Source-code quality review | [REQ-MAGIC-1](#req-magic-1-magic-number-274-uxto-overhead), [REQ-ERR](#req-err-error--in-mid-validator-paths-produces-no-trace), no HLint run |
+| §4 | Specification compliance | [REQ-D](#req-d-minchange--0-short-circuits-the-owner-payment-check), [REQ-B](#req-b-request-datum-fields-not-validated), [SOPV-1](#sopv-1-no-upper-bound-on-response-validity-period) |
+| §5 | Transaction format | [§6](#6-off-chain-tx-format-conformance-cip-52-5-7) |
+| §6 | On-chain vulnerability assessment | [§4](#4-findings) — full MLabs + Plutonomicon walkthrough |
+| §7 | Off-chain code review | [§6](#6-off-chain-tx-format-conformance-cip-52-5-7) (TX-format only); OWASP / dep-CVE out of scope this pass |
+| §8 | Test coverage | [TEST-1](#test-1-test-suite-has-no-validator-level-tests), [§5](#5-test-evidence) |
+| §9 | Build reproducibility | [BUILD-1](#build-1-cabalprojectfreeze-missing-devcontainer-tag-not-digest-pinned) |
+| §10 | Findings format | [§4](#4-findings) uses the CIP-52 finding template |
+| §11 | Severity classification | [§2.3](#23-severity-rubric-cip-52-11) |
+| §12 | Disclosures and disclaimers | [§9](#9-disclosures) below |
+
+---
+
+## 9. Disclosures
+
+This audit was performed by Claude Opus 4.7 (1M-context) operating as an AI agent under the `plutus-audit` skill (`tee-audit@0.1.0` plugin). **It is not a substitute for a human-expert audit.**
+
+Specifically:
+
+1. **AI-assisted, not AI-certified.** Claude is a capable code reviewer for Plutus, but it can hallucinate findings (we explicitly identified one hallucinated finding from the parallel UnboundedMarket scanner — see `audit/unboundedmarket-scan.md`). Every finding above should be independently verified by a human auditor against the live commit `11d13a56` before any of it informs an external publication or close-out artefact.
+2. **No code executed.** The audit is static. `cabal build`, `cabal test`, and property-test runs were not performed in this session. The findings have not been demonstrated end-to-end on-chain.
+3. **Point-in-time.** Audit reflects the state of `cardano-oracle` at commit `11d13a56` on `2026-05-12`. Subsequent changes are not covered. Re-run on every release-candidate.
+4. **Scope-limited.** Off-chain Python is covered only for TX-format conformance (CIP-52 §5/§7). It is **not** covered for OWASP, dependency CVEs, key custody, wallet UX, or operator-side runbooks. The TEE attestation layer (Intel TDX measurement, quote verification, enclave key management) is **explicitly out of scope** and is the single largest gap in the trust model — see [P7B-1](#p7b-1-no-on-chain-tee-attestation-trust-collapses-to-ecdsa-key-custody).
+5. **Parallel-tool corroboration.** The Catalyst F12 UnboundedMarket fine-tuned scanner (`unboundedmarket/vulnerabilities-openllama-3b`) was run on this codebase in parallel (branch `audit/unboundedmarket-scan`). It produced one finding on `OracleRequestValidator.hs` which on inspection was a misread (`*` interpreted as `+=`) and not a real bug. The scanner's coverage was 1 of 5 validators before the run was abandoned due to CPU inference cost on consumer hardware. The scanner's added signal to this audit was **zero**; the integration is preserved for documentation and re-runnability on GPU.
+6. **Catalyst Fund 14 deliverable.** This document is part of the close-out for [Quex Oracles project 1400103](https://projectcatalyst.io/funds/14/cardano-open-developers/quex-oracles-fully-decentralized-tee-powered-oracles-on-cardano). The Catalyst milestone framing should be read alongside the [Quex Cardano oracles close-out report](../../Metawork/projects/quex-tech/general/cardano/) (path is local to the author's workspace).
+
+### 9.1 Acknowledgements & remediation status
+
+| Finding | Status | Notes |
+|---|---|---|
+| REQ-C | Open | Highest priority; recommend the one-shot refund-token fix. |
+| P7B-1 | Open | Architectural; needs product-side decision on TEE-attestation strategy. |
+| REQ-A | Open | One-line fix; recommend addressing alongside REQ-C in same diff. |
+| RESP-2 | Open | One-line fix in `findOracle`. |
+| REQ-D | Open | Specification clarification; product decision. |
+| LIB-1 | Open | Operational; deploy a never-spendable library validator. |
+| REQ-B | Open | Validator-level bound checks. |
+| RESP-A | Open | Defensive purpose dispatch. |
+| SOPV-1 | Open | Add upper bound on `responseValidityPeriod`. |
+| REQ-MAGIC-1 | Open | Style. |
+| TEST-1 | Open | Meta; adopt `plutus-simple-model`. |
+| EUS-1 | Open | Defensive; use `fromBuiltinData`. |
+| RESP-B | Open | Documentation. |
+| REQ-ERR | Open | `traceError` everywhere. |
+| P9-1 | Open | Remove unused field or add `mkPoolActionID` self-check. |
+| DOC-1 | Open | Author `docs/ARCHITECTURE.md`. |
+| STAKE-1 | Open | Product decision on stake-credential strategy. |
+| BUILD-1 | Open | Generate `cabal.project.freeze`; pin devcontainer digest. |
+
+---
+
+*End of audit.*
+
