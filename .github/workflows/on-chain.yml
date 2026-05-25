@@ -6,10 +6,6 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/input-output-hk/devx-devcontainer:x86_64-linux.ghc96-iog
-    defaults:
-      run:
-        # devx sets up GHC/cabal via an interactive login shell; -ic sources it
-        shell: bash -ic "{0}"
     steps:
       - uses: actions/checkout@v4
 
@@ -23,6 +19,10 @@ jobs:
           key: cabal-${{ hashFiles('on-chain/cabal.project', 'on-chain/*.cabal') }}
           restore-keys: cabal-
 
-      - run: cd on-chain && cabal update && cabal test
-      - run: cd on-chain && cabal run gen-oracle-blueprint ../off-chain/plutus.json
-      - run: cd on-chain && cabal run gen-example-user-blueprint ../off-chain/plutus.user.json
+      # devx puts GHC/cabal on PATH only inside an interactive shell, so each
+      # command runs via `bash -ic "..."` exactly as compile-contracts.sh does.
+      # (A `shell: bash -ic "{0}"` default would instead try to exec the step
+      # script by path and fail with "Permission denied" / exit 126.)
+      - run: bash -ic "cd on-chain && cabal update && cabal test"
+      - run: bash -ic "cd on-chain && cabal run gen-oracle-blueprint ../off-chain/plutus.json"
+      - run: bash -ic "cd on-chain && cabal run gen-example-user-blueprint ../off-chain/plutus.user.json"
