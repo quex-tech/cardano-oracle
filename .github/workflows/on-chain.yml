@@ -3,26 +3,12 @@ on: [push, pull_request]
 
 jobs:
   build-and-test:
+    # ubuntu-latest is x86_64, so the x86_64-linux devx image inside
+    # compile-contracts.sh runs natively (no emulation).
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/input-output-hk/devx-devcontainer:x86_64-linux.ghc96-iog
     steps:
       - uses: actions/checkout@v4
-
-      # Cache the slow part: compiled CHaP/plutus deps + project build artifacts.
-      # index-state is pinned in cabal.project, so the key is stable across runs.
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cabal/store
-            on-chain/dist-newstyle
-          key: cabal-${{ hashFiles('on-chain/cabal.project', 'on-chain/*.cabal') }}
-          restore-keys: cabal-
-
-      # devx puts GHC/cabal on PATH only inside an interactive shell, so each
-      # command runs via `bash -ic "..."` exactly as compile-contracts.sh does.
-      # (A `shell: bash -ic "{0}"` default would instead try to exec the step
-      # script by path and fail with "Permission denied" / exit 126.)
-      - run: bash -ic "cd on-chain && cabal update && cabal test"
-      - run: bash -ic "cd on-chain && cabal run gen-oracle-blueprint ../off-chain/plutus.json"
-      - run: bash -ic "cd on-chain && cabal run gen-example-user-blueprint ../off-chain/plutus.user.json"
+      # Reuse the canonical build entrypoint: it runs `docker run ... bash -ic`,
+      # so the devx Nix env (ghc/cabal on PATH, loaded via /root/.bashrc) is
+      # active, then runs cabal test + both blueprint generators.
+      - run: ./compile-contracts.sh
