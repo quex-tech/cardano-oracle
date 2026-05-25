@@ -1,0 +1,28 @@
+name: on-chain
+on: [push, pull_request]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/input-output-hk/devx-devcontainer:x86_64-linux.ghc96-iog
+    defaults:
+      run:
+        # devx sets up GHC/cabal via an interactive login shell; -ic sources it
+        shell: bash -ic "{0}"
+    steps:
+      - uses: actions/checkout@v4
+
+      # Cache the slow part: compiled CHaP/plutus deps + project build artifacts.
+      # index-state is pinned in cabal.project, so the key is stable across runs.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cabal/store
+            on-chain/dist-newstyle
+          key: cabal-${{ hashFiles('on-chain/cabal.project', 'on-chain/*.cabal') }}
+          restore-keys: cabal-
+
+      - run: cd on-chain && cabal update && cabal test
+      - run: cd on-chain && cabal run gen-oracle-blueprint ../off-chain/plutus.json
+      - run: cd on-chain && cabal run gen-example-user-blueprint ../off-chain/plutus.user.json
