@@ -11,7 +11,6 @@ Oracle responses are stored as UTxOs at the [oracle response validator](./on-cha
 - Currency symbol: `PolicyID` = the oracle contract hash
 - Token name: `PoolActionID` (SHA-256 hash of `(PoolID, ActionID)`). `ActionID` identifies the request, `PoolID` is the asset class of a pool token (described below)
 - Datum in the response UTxO: `(Timestamp, Error, Response)` where `Response` is arbitrary BuiltinData
-- The response validator caps the serialised size of the TEE-signed response data item at 4096 bytes (audit M1): an oversized payload would make every later consolidation or consumer read exceed the ex-unit budget, permanently DoS-ing that `PoolActionID`
 
 Intent: the asset class `<PolicyID>.<PoolActionID>` acts as the deterministic index for "the response for this pool and this request."
 

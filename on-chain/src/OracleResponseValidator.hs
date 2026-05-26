@@ -89,8 +89,7 @@ oracleResponseTypedValidator
         poolActionID = mkPoolActionID poolID actionID
         (currencySymbol, ownAddress, maybeOldDatum, spentTokenNames) = storageScriptInfo scriptInfo txInfoInputs
         hasCurrency (TxOut _ value _ _) = currencySymbol `elem` symbols value
-     in lengthOfByteString (serialiseData rawDataItem) <= maxResponseDataItemBytes
-          && verifyOracleMessage signedOracleMessage oracleDatum txInfoValidRange
+     in verifyOracleMessage signedOracleMessage oracleDatum txInfoValidRange
           && (relayer `elem` txInfoSignatories)
           && case filter hasCurrency txInfoOutputs of
             [TxOut address value (OutputDatum (Datum newDatum)) _] ->
@@ -136,10 +135,6 @@ findPoolID value =
   case filter (\(cs, _, _) -> cs /= adaSymbol) (flattenValue value) of
     [(cs, tn, v)] | v == 1 -> Just $ AssetClass (cs, tn)
     _ -> Nothing
-
-{-# INLINEABLE maxResponseDataItemBytes #-}
-maxResponseDataItemBytes :: Integer
-maxResponseDataItemBytes = 4096
 
 {-# INLINEABLE mkPoolActionID #-}
 mkPoolActionID :: PoolID -> ActionID -> PoolActionID
