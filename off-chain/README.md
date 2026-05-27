@@ -57,7 +57,7 @@ Prints `WALLET_MNEMONIC` value. Put it into the `.env` file or set the environme
 
 Passphrase is optional. If speficied, you have to remember it and provide to the other scripts with the `--passhprase` option.
 
-Also shows the addresses. Top up the treasury address.
+Also shows the addresses. Top up the treasury address to register oracle, and request treasury address to send requests to oracles.
 
 You can print these addresses again with:
 
@@ -225,6 +225,8 @@ There must be a fresh response at the address (created less than about 20 minute
 
 ### Create and manage pending requests
 
+Important: requests are funded from Request treasury address. So top it up.
+
 Create request command:
 
 ```sh
@@ -234,6 +236,11 @@ Create request command:
   --ttl 60 \
   --max-response 256 \
   --submit
+```
+
+Another example:
+```
+./pending_requests.py add https://api.binance.com/api/v3/ticker/price?symbol=ADAUSDT --filter ".price|tonumber*100000000|floor" "uint" --submit --wait
 ```
 
 Useful flags:
