@@ -16,11 +16,12 @@ Run from `off-chain/` (the helpers `cd` there themselves):
 
 | Step | Script | What it does | On-chain? |
 |------|--------|--------------|-----------|
-| 0 | `./demo/00-env.sh` | Title card: network, pool, protocol addresses | read-only |
-| 1a | `./demo/01-wallet.sh` | Show the requester wallet (the only local key) | read-only |
-| 1b | `./demo/02-request.sh` | Submit the ADA/USDT request, print the request tx | **submits** |
-| 2 | `./demo/03-await.sh` | Poll until the TEE-signed response lands, print the response tx | read-only |
-| 3 | `./demo/04-consumer.sh` | Cue card: consumer contract + confirmed spend tx link | read-only |
+| 1 | `./demo/01-setup.sh` | Set the stage: network, pool, protocol addresses, requester wallet | read-only |
+| 2 | `./demo/02-request.sh` | Submit the ADA/USDT request, print the request tx | **submits** |
+| 3 | `./demo/03-await.sh` | Poll until the TEE-signed response lands, print the response tx | read-only |
+| 4 | `./demo/04-consumer.sh` | Cue card: consumer contract + confirmed spend tx link | read-only |
+
+Step 1 sets the stage locally; from step 2 on, each script is an actual Cardano interaction.
 
 Each script prints the exact command it runs, so if a take fails you re-run just that step.
 
