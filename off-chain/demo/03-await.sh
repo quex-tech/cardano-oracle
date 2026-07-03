@@ -27,10 +27,8 @@ req_epoch="$(stat -f %m "$DEMO_DIR/.last_request" 2>/dev/null || stat -c %Y "$DE
 cutoff=$(( req_epoch - 60 ))
 
 banner "Waiting for the TEE-signed response"
-echo "Pool Action ID: ${pool_action_id}"
-echo
-echo "While we wait, the enclave (Intel TDX) is fetching the API and signing the"
-echo "value in hardware. Anyone can verify that enclave at ${CYAN}https://verify.quex.tech${RESET}"
+echo "The enclave (Intel TDX) fetches the API and signs the value in hardware."
+echo "Verify the enclave at ${CYAN}https://verify.quex.tech${RESET}"
 echo
 
 # Print the matched response block, or exit non-zero (see match_response.py).
@@ -60,7 +58,8 @@ done
 echo; echo
 ok "TEE-signed response is on-chain:"
 echo
-echo "$response"
+# Show only the narrated fields; the UTxO/PoolAction lines stay in $response for parsing.
+grep -E 'Timestamp:|Error:|Value:' <<<"$response"
 echo
 
 txid="$(sed -n 's/^- UTxO:[[:space:]]*\([0-9a-f]\{64\}\)#.*$/\1/p' <<<"$response" | head -1)"
@@ -71,4 +70,4 @@ if [ -n "$txid" ]; then
 fi
 
 echo
-ok "Request in, hardware-signed answer out. Next: ./demo/04-consumer.sh"
+ok "Next: ./demo/04-consumer.sh"

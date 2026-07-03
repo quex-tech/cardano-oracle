@@ -2,29 +2,23 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2025 Quex Technologies
 #
-# Step 1 (set the stage): show the network, the oracle pool, the on-chain
-# protocol addresses, and the requester wallet. Read-only, no transactions.
-# The actual Cardano calls start in 02.
+# Step 1 (set the stage): network, oracle pool, protocol addresses, wallet.
+# Read-only, no transactions. Output is trimmed to what the video narrates;
+# run ./protocol.py and ./wallet.py show directly for the full picture.
 . "$(dirname "$0")/lib.sh"
 
 require_env CARDANO_NETWORK ORACLE_POOL_ID WALLET_MNEMONIC
 
 banner "QUEX ORACLE DEMO  ·  network: ${CARDANO_NETWORK}"
-echo "Oracle pool ID : ${ORACLE_POOL_ID}"
-echo "Explorer       : $(scan_base)"
 
-banner "Protocol addresses on this network"
-# protocol.py prints the responses address + response currency symbol.
-# On mainnet the currency symbol must be c093ca8bc5318cb767219cc1907aa03120ba696fb3293b48069e5edc.
-run_cmd ./protocol.py
+protocol_out="$(./protocol.py 2>/dev/null)"
+requests_addr="$(sed -n '/^Requests:/,/Address:/s/^ *Address: *//p' <<<"$protocol_out" | head -1)"
+responses_addr="$(sed -n '/^Responses:/,/Address:/s/^ *Address: *//p' <<<"$protocol_out" | head -1)"
+wallet_addr="$(./wallet.py show --passphrase "${PASSPHRASE:-}" 2>/dev/null | sed -n 's/^Treasury address: *//p')"
 
-banner "Your wallet (the requester)"
-# --passphrase is optional; pass PASSPHRASE from .env if you set one at generation.
-run_cmd ./wallet.py show --passphrase "${PASSPHRASE:-}"
-
+echo "Oracle pool:         ${ORACLE_POOL_ID:0:24}..."
+echo "Requests validator:  ${requests_addr}"
+echo "Responses validator: ${responses_addr}"
+echo "Wallet (requester):  ${wallet_addr}"
 echo
-warn "Top up the Treasury address with a few ADA before recording (~3-5 ADA is plenty)."
-warn "This wallet is the only key on the machine; the oracle's signing key lives inside"
-warn "the Intel TDX enclave, not here. That's the trust model: trust the hardware."
-echo
-ok "Stage is set. Next: ./demo/02-request.sh"
+ok "Next: ./demo/02-request.sh"

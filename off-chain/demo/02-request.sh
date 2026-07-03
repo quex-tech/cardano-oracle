@@ -25,13 +25,15 @@ echo
 tmp="$(mktemp)"
 echo "${DIM}\$${RESET} ${BOLD}./pending_requests.py add \"${REQUEST_URL}\" --filter \"${FILTER}\" \"${SCHEMA}\" --ttl ${TTL_MIN} --max-response ${MAX_RESPONSE} --submit --wait${RESET}"
 echo
+# Full output goes to $tmp for parsing; the screen only shows the tx lifecycle
+# (the request datum details duplicate the header above).
 ./pending_requests.py add "${REQUEST_URL}" \
   --filter "${FILTER}" \
   "${SCHEMA}" \
   --ttl "${TTL_MIN}" \
   --max-response "${MAX_RESPONSE}" \
   --passphrase "${PASSPHRASE:-}" \
-  --submit --wait 2>&1 | tee "$tmp"
+  --submit --wait 2>&1 | tee "$tmp" | grep --line-buffered -E '^(Transaction ID:|Transaction submitted|Waiting for confirmation|Transaction confirmed|Traceback|\S*Error|\S*Exception)' || true
 
 # Parse the exact fields the tool prints; do not grab arbitrary hex (Action ID
 # and tracebacks also contain 64-hex strings).
