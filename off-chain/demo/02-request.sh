@@ -33,17 +33,23 @@ echo
   --passphrase "${PASSPHRASE:-}" \
   --submit --wait 2>&1 | tee "$tmp"
 
-txid="$(grep -oE '[0-9a-f]{64}' "$tmp" | head -1)"
+# Parse the exact fields the tool prints; do not grab arbitrary hex (Action ID
+# and tracebacks also contain 64-hex strings).
+txid="$(sed -n 's/^Transaction ID: \([0-9a-f]\{64\}\)$/\1/p' "$tmp" | head -1)"
+pool_action_id="$(sed -n 's/^Pool Action ID:[[:space:]]*\([0-9a-f]\{64\}\)$/\1/p' "$tmp" | head -1)"
+submitted="$(grep -c '^Transaction submitted\.$' "$tmp")"
 rm -f "$tmp"
 
 echo
-if [ -n "$txid" ]; then
+if [ "$submitted" -ge 1 ] && [ -n "$txid" ]; then
   echo "$txid" > "$DEMO_DIR/.last_request"
+  [ -n "$pool_action_id" ] && echo "$pool_action_id" > "$DEMO_DIR/.last_pool_action"
   ok "Request submitted on ${CARDANO_NETWORK}."
   link "  $(scan_base)/transaction/${txid}"
   echo "  (open this tab to show the request tx: inputs, outputs, request datum)"
 else
-  warn "Could not parse the request tx id from the output above."
+  warn "Request was NOT submitted (see the error above). Nothing was spent."
+  exit 1
 fi
 
 echo

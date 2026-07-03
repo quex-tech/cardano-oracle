@@ -3,3 +3,4 @@ work
 __pycache__
 .env
 .venv
+demo/.last_*

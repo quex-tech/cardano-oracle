@@ -52,8 +52,8 @@ non-mainnet deployment, so producing a mainnet spend needs a one-time rebuild:
 
 1. In `on-chain/app/GenExampleUserBlueprint.hs` set:
    - `currencySymbol = "c093ca8bc5318cb767219cc1907aa03120ba696fb3293b48069e5edc"`
-   - `poolActionID = "<mainnet ADA/USDT PoolAction ID>"` (printed by `./responses.py` after a fulfilled request)
-   The response type (`Integer`/`uint`) and rule (`> 25000000`) already match ADA/USDT, so no other edits.
+   - `poolActionID = "64b526bad78de161682bea9782c4c28ac641d9ab5bf0957bcdd688366d8a13ed"` (the ADA/USDT request above; printed by `./responses.py`)
+   Also check the unlock rule in `on-chain/src/ExampleUserValidator.hs`: `isResponseGood datum = datum > 25000000` means ADA/USDT > $0.25. With ADA below that (e.g. $0.17 as of 2026-07-03, response value 16850000) the spend will fail; lower the threshold (e.g. `> 10000000`).
 2. Rebuild into a separate blueprint (keeps the repo default intact):
    ```sh
    ../compile-contracts.sh    # docker; on Apple Silicon the x86 GHC image runs emulated (slow, one-time)
