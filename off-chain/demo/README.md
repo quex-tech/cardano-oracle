@@ -47,8 +47,23 @@ signing key lives inside the enclave, never here.
 ## Act 3 prerequisite (the confirmed spend tx)
 
 The video shows Act 3 as an already-confirmed spend transaction in the explorer, not a
-live run. That tx must exist first. The committed `plutus.user.json` is compiled for a
-non-mainnet deployment, so producing a mainnet spend needs a one-time rebuild:
+live run. That tx must exist first.
+
+**Shortcut:** `plutus.user.mainnet.json` (committed on this branch) is already compiled
+for the mainnet ADA/USDT action with an unlock threshold of `> 10000000` ($0.10). With a
+fresh response on-chain (run `02` + `03` first; responses expire in ~30 min):
+
+```sh
+./demo.py lock 2 --user-plutus-blueprint plutus.user.mainnet.json --submit --wait
+./demo.py spend addr1w8qf8j5tc5ccedm8yxwvryr65qcjpwnfd7ejjw6gq609ahqxexh26 \
+  --user-plutus-blueprint plutus.user.mainnet.json --submit --wait
+```
+
+Note: the spend needs ~4 ADA of collateral on the Treasury address. Verified live:
+lock `c5592980…`, spend `22acbc909d3d5fe3098b3a8fa45936533a7e122b9285c85c0443a08484d1f651`.
+
+For a different action or threshold, rebuild (the committed default `plutus.user.json`
+targets a non-mainnet deployment):
 
 1. In `on-chain/app/GenExampleUserBlueprint.hs` set:
    - `currencySymbol = "c093ca8bc5318cb767219cc1907aa03120ba696fb3293b48069e5edc"`

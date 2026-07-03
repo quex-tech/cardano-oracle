@@ -30,10 +30,10 @@ import PlutusTx.Builtins.HasOpaque (stringToBuiltinByteStringHex)
 import System.Environment (getArgs)
 
 currencySymbol :: String
-currencySymbol = "6737bfc42d5874ea76d4e6cd4893864c8f09d9cae165ff2a62f29b1a"
+currencySymbol = "c093ca8bc5318cb767219cc1907aa03120ba696fb3293b48069e5edc"
 
 poolActionID :: String
-poolActionID = "361b4aff73c84d3dcaf6178ff36e0ae3e1833273a726fb9642bfde3a12f84f41"
+poolActionID = "64b526bad78de161682bea9782c4c28ac641d9ab5bf0957bcdd688366d8a13ed"
 
 myContractBlueprint :: ContractBlueprint
 myContractBlueprint =
